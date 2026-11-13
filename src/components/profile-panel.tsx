@@ -23,7 +23,6 @@ function initials(name: string) {
 export function ProfilePanel({ profile, onProfileUpdated, onDataWiped }: Props) {
   const router = useRouter();
   const [fullName, setFullName] = useState(profile.full_name || "");
-  const [currentPassword, setCurrentPassword] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [busy, setBusy] = useState(false);
@@ -147,8 +146,6 @@ export function ProfilePanel({ profile, onProfileUpdated, onDataWiped }: Props) 
     setMessage(null);
     try {
       const next = password.trim();
-      const current = currentPassword.trim();
-      if (!current) throw new Error("Current password is required");
       if (next.length < 8) {
         throw new Error("Password must be at least 8 characters");
       }
@@ -160,7 +157,6 @@ export function ProfilePanel({ profile, onProfileUpdated, onDataWiped }: Props) 
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          currentPassword: current,
           password: next,
         }),
       });
@@ -169,7 +165,6 @@ export function ProfilePanel({ profile, onProfileUpdated, onDataWiped }: Props) 
         throw new Error(body.error || "Failed to change password");
       }
 
-      setCurrentPassword("");
       setPassword("");
       setConfirmPassword("");
       setMessage("Password updated — sign in again with the new password");
@@ -273,21 +268,9 @@ export function ProfilePanel({ profile, onProfileUpdated, onDataWiped }: Props) 
                 Password
               </h2>
               <p className="mt-0.5 text-sm" style={{ color: "var(--ink-muted)" }}>
-                Enter your current password, then a new one (at least 8 characters).
+                Choose a new password (at least 8 characters).
               </p>
             </div>
-            <label className="flex flex-col gap-1.5 text-xs font-medium" style={{ color: "var(--ink-muted)" }}>
-              Current password
-              <input
-                type="password"
-                required
-                autoComplete="current-password"
-                value={currentPassword}
-                onChange={(e) => setCurrentPassword(e.target.value)}
-                className="rounded-lg border px-3 py-2.5 text-sm outline-none"
-                style={{ borderColor: "var(--line)", color: "var(--ink)", background: "#fff" }}
-              />
-            </label>
             <label className="flex flex-col gap-1.5 text-xs font-medium" style={{ color: "var(--ink-muted)" }}>
               New password
               <input

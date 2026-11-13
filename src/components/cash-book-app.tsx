@@ -58,10 +58,13 @@ export function CashBookApp({
   const [showApproval, setShowApproval] = useState(false);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+  const [rangeFrom, setRangeFrom] = useState(initialDate);
+  const [rangeTo, setRangeTo] = useState(initialDate);
+  const [rangeActive, setRangeActive] = useState(false);
 
   const isBoss = currentProfile.role === "boss";
   const isToday = bookDate === todayBookDate();
-  const dayOpen = day.status === "open";
+  const dayOpen = day.status === "open" && !rangeActive;
   const timezone =
     process.env.NEXT_PUBLIC_CASHBOOK_TIMEZONE ?? "America/Los_Angeles";
 
@@ -134,7 +137,7 @@ export function CashBookApp({
           filter: `book_date=eq.${bookDate}`,
         },
         () => {
-          void loadDay(bookDate);
+          if (!rangeActive) void loadDay(bookDate);
         },
       )
       .on(
@@ -146,7 +149,7 @@ export function CashBookApp({
           filter: `book_date=eq.${bookDate}`,
         },
         () => {
-          void loadDay(bookDate);
+          if (!rangeActive) void loadDay(bookDate);
         },
       )
       .on(
@@ -158,7 +161,7 @@ export function CashBookApp({
           filter: `book_date=eq.${bookDate}`,
         },
         () => {
-          void loadDay(bookDate);
+          if (!rangeActive) void loadDay(bookDate);
         },
       )
       .on(
@@ -170,7 +173,7 @@ export function CashBookApp({
           filter: `book_date=eq.${bookDate}`,
         },
         () => {
-          void loadDay(bookDate);
+          if (!rangeActive) void loadDay(bookDate);
         },
       )
       .subscribe();
@@ -178,10 +181,10 @@ export function CashBookApp({
     return () => {
       void supabase.removeChannel(channel);
     };
-  }, [bookDate, loadDay, supabase]);
+  }, [bookDate, loadDay, rangeActive, supabase]);
 
   useEffect(() => {
-    if (!isBoss || !isToday) {
+    if (!isBoss || !isToday || rangeActive) {
       setShowApproval(false);
       return;
     }
@@ -192,10 +195,13 @@ export function CashBookApp({
       day.status === "pending_approval" ||
       (day.status === "open" && isPastCloseTime());
     setShowApproval(needsApproval && !dismissed);
-  }, [isBoss, isToday, bookDate, day.status]);
+  }, [isBoss, isToday, bookDate, day.status, rangeActive]);
 
   async function onDateChange(next: string) {
     setBookDate(next);
+    setRangeFrom(next);
+    setRangeTo(next);
+    setRangeActive(false);
     setBusy(true);
     setMessage(null);
     try {
@@ -203,6 +209,73 @@ export function CashBookApp({
       router.replace(`/?date=${next}`);
     } catch (err) {
       setMessage(err instanceof Error ? err.message : "Failed to load day");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function applyDateRange() {
+    if (!isBoss) return;
+    if (!rangeFrom || !rangeTo) {
+      setMessage("Choose From and To dates");
+      return;
+    }
+    if (rangeFrom > rangeTo) {
+      setMessage("From date must be on or before To date");
+      return;
+    }
+    setBusy(true);
+    setMessage(null);
+    try {
+      await supabase.rpc("ensure_cash_book_day", { p_date: rangeFrom });
+      const [{ data: fromDay }, { data: receiptRows }, { data: voucherRows }, { data: logRows }] =
+        await Promise.all([
+          supabase.from("cash_book_days").select("*").eq("book_date", rangeFrom).single(),
+          supabase
+            .from("receipts")
+            .select("*")
+            .gte("book_date", rangeFrom)
+            .lte("book_date", rangeTo)
+            .order("book_date", { ascending: true })
+            .order("created_at", { ascending: true }),
+          supabase
+            .from("vouchers")
+            .select("*")
+            .gte("book_date", rangeFrom)
+            .lte("book_date", rangeTo)
+            .order("book_date", { ascending: true })
+            .order("created_at", { ascending: true }),
+          supabase
+            .from("audit_logs")
+            .select("*")
+            .gte("book_date", rangeFrom)
+            .lte("book_date", rangeTo)
+            .order("created_at", { ascending: false }),
+        ]);
+
+      if (fromDay) setDay(fromDay as CashBookDay);
+      setReceipts((receiptRows as Receipt[]) ?? []);
+      setVouchers((voucherRows as Voucher[]) ?? []);
+      setLogs((logRows as AuditLog[]) ?? []);
+      setRangeActive(true);
+      setBookDate(rangeFrom);
+    } catch (err) {
+      setMessage(err instanceof Error ? err.message : "Failed to apply date filter");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function clearDateRange() {
+    setRangeActive(false);
+    setRangeFrom(bookDate);
+    setRangeTo(bookDate);
+    setBusy(true);
+    setMessage(null);
+    try {
+      await refresh(bookDate);
+    } catch (err) {
+      setMessage(err instanceof Error ? err.message : "Failed to clear filter");
     } finally {
       setBusy(false);
     }
@@ -351,13 +424,7 @@ export function CashBookApp({
     <div className="mx-auto flex w-full max-w-6xl flex-1 flex-col px-4 py-8">
       <header className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <p
-            className="text-xs uppercase tracking-[0.2em]"
-            style={{ color: "var(--accent)", fontFamily: "var(--font-body)" }}
-          >
-            Alliance Square
-          </p>
-          <h1 className="mt-1 text-4xl font-semibold tracking-tight">Cash Book</h1>
+          <h1 className="text-4xl font-semibold tracking-tight">Cash Book</h1>
           <p className="mt-1 text-sm" style={{ color: "var(--ink-muted)", fontFamily: "var(--font-body)" }}>
             {currentProfile.full_name?.trim() || (isBoss ? "Boss" : "Accounts")}
           </p>
@@ -381,28 +448,86 @@ export function CashBookApp({
         </p>
       ) : null}
 
-      <div className="mt-6 flex flex-wrap gap-2" style={{ fontFamily: "var(--font-body)" }}>
-        {(
-          [
-            ["receipts", "Receipts", "var(--accent)"] as const,
-            ["vouchers", "Cash voucher", "var(--danger)"] as const,
-          ]
-        ).map(([id, label, activeColor]) => (
-          <button
-            key={id}
-            type="button"
-            onClick={() => setTab(id)}
-            className="rounded-full px-4 py-2 text-sm font-semibold transition"
-            style={{
-              background: tab === id ? activeColor : "var(--panel)",
-              color: tab === id ? "#fff" : "var(--ink)",
-              border: `1px solid ${tab === id ? activeColor : "var(--line)"}`,
-            }}
+      <div className="mt-6 flex flex-wrap items-end justify-between gap-3" style={{ fontFamily: "var(--font-body)" }}>
+        <div className="flex flex-wrap gap-2">
+          {(
+            [
+              ["receipts", "Receipts", "var(--accent)"] as const,
+              ["vouchers", "Cash voucher", "var(--danger)"] as const,
+            ]
+          ).map(([id, label, activeColor]) => (
+            <button
+              key={id}
+              type="button"
+              onClick={() => setTab(id)}
+              className="rounded-full px-4 py-2 text-sm font-semibold transition"
+              style={{
+                background: tab === id ? activeColor : "var(--panel)",
+                color: tab === id ? "#fff" : "var(--ink)",
+                border: `1px solid ${tab === id ? activeColor : "var(--line)"}`,
+              }}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+
+        {isBoss ? (
+          <div
+            className="flex flex-wrap items-end gap-2 rounded-xl border px-3 py-2"
+            style={{ borderColor: "var(--line)", background: "var(--panel)" }}
           >
-            {label}
-          </button>
-        ))}
+            <label className="flex flex-col gap-1 text-xs" style={{ color: "var(--ink-muted)" }}>
+              From
+              <input
+                type="date"
+                value={rangeFrom}
+                disabled={busy}
+                onChange={(e) => setRangeFrom(e.target.value)}
+                className="rounded-md border px-3 py-2 text-sm"
+                style={{ borderColor: "var(--line)", background: "#fff", color: "var(--ink)" }}
+              />
+            </label>
+            <label className="flex flex-col gap-1 text-xs" style={{ color: "var(--ink-muted)" }}>
+              To
+              <input
+                type="date"
+                value={rangeTo}
+                disabled={busy}
+                onChange={(e) => setRangeTo(e.target.value)}
+                className="rounded-md border px-3 py-2 text-sm"
+                style={{ borderColor: "var(--line)", background: "#fff", color: "var(--ink)" }}
+              />
+            </label>
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => void applyDateRange()}
+              className="rounded-md px-3 py-2 text-sm font-semibold text-white disabled:opacity-60"
+              style={{ background: "var(--accent)" }}
+            >
+              Apply
+            </button>
+            {rangeActive ? (
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => void clearDateRange()}
+                className="rounded-md border px-3 py-2 text-sm font-semibold disabled:opacity-60"
+                style={{ borderColor: "var(--line)", background: "#fff", color: "var(--ink)" }}
+              >
+                Clear
+              </button>
+            ) : null}
+          </div>
+        ) : null}
       </div>
+
+      {rangeActive ? (
+        <p className="mt-3 text-sm" style={{ color: "var(--ink-muted)", fontFamily: "var(--font-body)" }}>
+          Showing {rangeFrom} to {rangeTo} (view only). Clear filter to edit a single day.
+        </p>
+      ) : null}
 
       <div className="mt-6 rounded-2xl border p-5 shadow-[var(--shadow)]" style={{ borderColor: "var(--line)", background: "var(--panel)" }}>
         {tab === "receipts" ? (
@@ -412,15 +537,25 @@ export function CashBookApp({
             bookDate={bookDate}
             dayStatus={day.status}
             dayOpen={dayOpen}
-            openingBalance={Number(day.opening_balance ?? 0)}
-            showApprove={isBoss && day.status !== "approved"}
-            showUnlock={isBoss && day.status === "approved"}
+            openingBalance={rangeActive ? undefined : Number(day.opening_balance ?? 0)}
+            canEditOpeningBalance={isBoss && !rangeActive}
+            showApprove={!rangeActive && isBoss && day.status !== "approved"}
+            showUnlock={!rangeActive && isBoss && day.status === "approved"}
             showEditWindow
-            canUnlockEntry={isBoss}
+            canUnlockEntry={isBoss && !rangeActive}
             dayActionBusy={busy}
             onApproveDay={approve}
             onUnlockDay={unlock}
-            onDateChange={onDateChange}
+            onDateChange={rangeActive ? undefined : onDateChange}
+            onUpdateOpeningBalance={async (amount) => {
+              const { error } = await supabase
+                .from("cash_book_days")
+                .update({ opening_balance: amount })
+                .eq("book_date", bookDate);
+              if (error) throw error;
+              await supabase.rpc("recompute_opening_balances_from", { p_from: bookDate });
+              await refresh(bookDate);
+            }}
             onUnlockEntry={async (id) => {
               if (!dayOpen) {
                 const { error: dayError } = await supabase.rpc("unlock_cash_book_day", {
@@ -485,14 +620,14 @@ export function CashBookApp({
             bookDate={bookDate}
             dayStatus={day.status}
             dayOpen={dayOpen}
-            showApprove={isBoss && day.status !== "approved"}
-            showUnlock={isBoss && day.status === "approved"}
+            showApprove={!rangeActive && isBoss && day.status !== "approved"}
+            showUnlock={!rangeActive && isBoss && day.status === "approved"}
             showEditWindow
-            canUnlockEntry={isBoss}
+            canUnlockEntry={isBoss && !rangeActive}
             dayActionBusy={busy}
             onApproveDay={approve}
             onUnlockDay={unlock}
-            onDateChange={onDateChange}
+            onDateChange={rangeActive ? undefined : onDateChange}
             onUnlockEntry={async (id) => {
               if (!dayOpen) {
                 const { error: dayError } = await supabase.rpc("unlock_cash_book_day", {
@@ -562,8 +697,17 @@ export function CashBookApp({
               Total receipts
             </p>
             <p className="mt-1 text-2xl font-semibold" style={{ fontFamily: "var(--font-display)" }}>
-              {formatMoney(Number(day.opening_balance ?? 0) + receiptTotal)}
+              {formatMoney(
+                rangeActive
+                  ? receiptTotal
+                  : Number(day.opening_balance ?? 0) + receiptTotal,
+              )}
             </p>
+            {rangeActive ? (
+              <p className="mt-0.5 text-xs" style={{ color: "var(--ink-muted)" }}>
+                Entries in range
+              </p>
+            ) : null}
           </div>
           <div>
             <p className="text-xs uppercase tracking-wide" style={{ color: "var(--ink-muted)" }}>
@@ -575,16 +719,20 @@ export function CashBookApp({
           </div>
           <div>
             <p className="text-xs uppercase tracking-wide" style={{ color: "var(--ink-muted)" }}>
-              Closing balance
+              {rangeActive ? "Net (receipts − vouchers)" : "Closing balance"}
             </p>
             <p className="mt-1 text-2xl font-semibold" style={{ fontFamily: "var(--font-display)" }}>
               {formatMoney(
-                Number(day.opening_balance ?? 0) + receiptTotal - voucherTotal,
+                rangeActive
+                  ? receiptTotal - voucherTotal
+                  : Number(day.opening_balance ?? 0) + receiptTotal - voucherTotal,
               )}
             </p>
-            <p className="mt-0.5 text-xs" style={{ color: "var(--ink-muted)" }}>
-              Next day’s opening
-            </p>
+            {!rangeActive ? (
+              <p className="mt-0.5 text-xs" style={{ color: "var(--ink-muted)" }}>
+                Next day’s opening
+              </p>
+            ) : null}
           </div>
         </div>
       ) : null}

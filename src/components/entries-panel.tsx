@@ -27,6 +27,7 @@ type Props = {
   dayOpen: boolean;
   /** Shown as the first receipts row (carry-forward). */
   openingBalance?: number;
+  canEditOpeningBalance?: boolean;
   showApprove?: boolean;
   showUnlock?: boolean;
   showEditWindow?: boolean;
@@ -35,6 +36,7 @@ type Props = {
   onApproveDay?: () => void;
   onUnlockDay?: () => void;
   onDateChange?: (date: string) => void;
+  onUpdateOpeningBalance?: (amount: number) => Promise<void>;
   onUnlockEntry?: (id: string) => Promise<void>;
   onAdd: (input: { description: string; amount: number; entry_date: string }) => Promise<void>;
   onUpdate: (
@@ -107,6 +109,7 @@ export function EntriesPanel({
   dayStatus,
   dayOpen,
   openingBalance,
+  canEditOpeningBalance = false,
   showApprove,
   showUnlock,
   showEditWindow = false,
@@ -115,6 +118,7 @@ export function EntriesPanel({
   onApproveDay,
   onUnlockDay,
   onDateChange,
+  onUpdateOpeningBalance,
   onUnlockEntry,
   onAdd,
   onUpdate,
@@ -122,14 +126,20 @@ export function EntriesPanel({
 }: Props) {
   const showOpeningBalance = kind === "receipt" && openingBalance !== undefined;
   const openingAmount = Number(openingBalance ?? 0);
+  // Opening balance always owns R-YYYY-0001; real receipts continue from 0002.
+  const openingNumber = `R-${bookDate.slice(0, 4)}-0001`;
   const [now, setNow] = useState(() => Date.now());
   const [description, setDescription] = useState("");
   const [amount, setAmount] = useState("");
   const [entryDate, setEntryDate] = useState(bookDate);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [editingOpening, setEditingOpening] = useState(false);
+  const [openingDraft, setOpeningDraft] = useState("");
+  const [searchQuery, setSearchQuery] = useState("");
   const [showForm, setShowForm] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const openingAmountRef = useRef<HTMLInputElement>(null);
 
   const dateRef = useRef<HTMLInputElement>(null);
   const descriptionRef = useRef<HTMLInputElement>(null);
@@ -152,12 +162,55 @@ export function EntriesPanel({
     return () => window.clearTimeout(id);
   }, [formOpen, editingId]);
 
+  useEffect(() => {
+    if (!editingOpening) return;
+    const id = window.setTimeout(() => {
+      openingAmountRef.current?.focus();
+      openingAmountRef.current?.select();
+    }, 0);
+    return () => window.clearTimeout(id);
+  }, [editingOpening]);
+
+  async function saveOpeningBalance(e: React.FormEvent) {
+    e.preventDefault();
+    if (!onUpdateOpeningBalance || !canEditOpeningBalance) return;
+    const raw = openingDraft.trim();
+    if (!raw) {
+      setError("Opening balance is required");
+      return;
+    }
+    const n = Number(raw);
+    if (!Number.isFinite(n) || n < 0) {
+      setError("Enter a valid opening balance");
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    try {
+      await onUpdateOpeningBalance(n);
+      setEditingOpening(false);
+      setOpeningDraft("");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to update opening balance");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const filteredRows = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    if (!q) return rows;
+    return rows.filter((row) => row.description.toLowerCase().includes(q));
+  }, [rows, searchQuery]);
+
   const total = useMemo(() => {
-    const entries = rows.reduce((sum, r) => sum + Number(r.amount), 0);
-    return showOpeningBalance ? openingAmount + entries : entries;
-  }, [rows, showOpeningBalance, openingAmount]);
+    const entries = filteredRows.reduce((sum, r) => sum + Number(r.amount), 0);
+    const includeOpening = showOpeningBalance && !searchQuery.trim();
+    return includeOpening ? openingAmount + entries : entries;
+  }, [filteredRows, showOpeningBalance, openingAmount, searchQuery]);
 
   const canCreate = dayOpen && dayStatus === "open";
+  const showOpeningInTable = showOpeningBalance && !searchQuery.trim();
 
   function focusNextFromDate() {
     descriptionRef.current?.focus();
@@ -255,6 +308,17 @@ export function EntriesPanel({
           </p>
         </div>
         <div className="flex flex-wrap items-end gap-3">
+          <label className="flex flex-col gap-1 text-xs" style={{ color: "var(--ink-muted)" }}>
+            Search
+            <input
+              type="search"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Description…"
+              className="min-w-[10rem] rounded-md border px-3 py-2 text-sm"
+              style={{ borderColor: "var(--line)", background: "#fff", color: "var(--ink)" }}
+            />
+          </label>
           {onDateChange ? (
             <div className="flex flex-col gap-1 text-xs" style={{ color: "var(--ink-muted)" }}>
               <span>Sheet date</span>
@@ -430,32 +494,94 @@ export function EntriesPanel({
             </tr>
           </thead>
           <tbody>
-            {showOpeningBalance ? (
+            {showOpeningInTable ? (
               <tr className="border-t" style={{ borderColor: "var(--line)", background: "var(--bg-deep)" }}>
                 <td className="px-3 py-2.5 whitespace-nowrap">{bookDate}</td>
-                <td className="px-3 py-2.5 font-medium whitespace-nowrap" style={{ color: "var(--ink-muted)" }}>
-                  —
+                <td className="px-3 py-2.5 font-medium whitespace-nowrap">
+                  {openingNumber}
                 </td>
                 <td className="px-3 py-2.5 font-medium">Opening balance</td>
                 <td className="px-3 py-2.5 text-right whitespace-nowrap font-medium">
-                  {formatMoney(openingAmount)}
+                  {editingOpening ? (
+                    <form onSubmit={saveOpeningBalance} className="inline-flex items-center justify-end gap-2">
+                      <input
+                        ref={openingAmountRef}
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        required
+                        value={openingDraft}
+                        onChange={(e) => setOpeningDraft(e.target.value)}
+                        disabled={busy || dayActionBusy}
+                        className="w-28 rounded-md border px-2 py-1 text-right text-sm"
+                        style={{ borderColor: "var(--line)", color: "var(--ink)", background: "#fff" }}
+                      />
+                      <button
+                        type="submit"
+                        disabled={busy || dayActionBusy}
+                        className="rounded-md px-2 py-1 text-xs font-semibold text-white disabled:opacity-60"
+                        style={{ background: "var(--accent)" }}
+                      >
+                        Save
+                      </button>
+                      <button
+                        type="button"
+                        disabled={busy || dayActionBusy}
+                        onClick={() => {
+                          setEditingOpening(false);
+                          setOpeningDraft("");
+                          setError(null);
+                        }}
+                        className="rounded-md border px-2 py-1 text-xs disabled:opacity-60"
+                        style={{ borderColor: "var(--line)", background: "#fff" }}
+                      >
+                        Cancel
+                      </button>
+                    </form>
+                  ) : (
+                    formatMoney(openingAmount)
+                  )}
                 </td>
                 {showEditWindow ? <td className="w-0 px-2 py-2.5" /> : null}
-                <td className="w-0 px-2 py-2.5" />
+                <td className="w-0 px-2 py-2.5 whitespace-nowrap">
+                  {canEditOpeningBalance && onUpdateOpeningBalance && !editingOpening ? (
+                    <div className="flex items-center justify-end">
+                      <button
+                        type="button"
+                        aria-label="Edit opening balance"
+                        title="Edit opening balance"
+                        disabled={busy || dayActionBusy}
+                        className="inline-flex h-8 w-8 items-center justify-center rounded-md transition hover:bg-[var(--accent-soft)] disabled:opacity-60"
+                        style={{ color: "var(--accent)" }}
+                        onClick={() => {
+                          setEditingId(null);
+                          setShowForm(false);
+                          setEditingOpening(true);
+                          setOpeningDraft(String(openingAmount));
+                          setError(null);
+                        }}
+                      >
+                        <EditIcon />
+                      </button>
+                    </div>
+                  ) : null}
+                </td>
               </tr>
             ) : null}
-            {rows.length === 0 && !showOpeningBalance ? (
+            {filteredRows.length === 0 && !showOpeningInTable ? (
               <tr>
                 <td
                   colSpan={showEditWindow ? 6 : 5}
                   className="px-3 py-8 text-center"
                   style={{ color: "var(--ink-muted)" }}
                 >
-                  No entries yet.
+                  {searchQuery.trim()
+                    ? "No matching descriptions."
+                    : "No entries yet."}
                 </td>
               </tr>
             ) : null}
-            {rows.map((row) => {
+            {filteredRows.map((row) => {
                 const editable = canEditRow(row, dayOpen, now);
                 const left = remainingEditMs(row.editable_until, now);
                 const canUnlock = Boolean(canUnlockEntry && onUnlockEntry);
