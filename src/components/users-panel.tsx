@@ -280,11 +280,13 @@ export function UsersPanel() {
             type="email"
             required
             value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            className="rounded-md border px-3 py-2 text-sm"
+            onChange={(e) => setEmail(e.target.value.toLowerCase())}
+            className="rounded-md border px-3 py-2 text-sm lowercase"
             style={{ borderColor: "var(--line)", color: "var(--ink)" }}
             placeholder="accounts@example.com"
             autoComplete="off"
+            autoCapitalize="none"
+            spellCheck={false}
           />
         </label>
         <label className="flex flex-col gap-1 text-xs md:col-span-2" style={{ color: "var(--ink-muted)" }}>
@@ -439,10 +441,12 @@ export function UsersPanel() {
               <input
                 type="email"
                 value={editEmail}
-                onChange={(e) => setEditEmail(e.target.value)}
-                className="rounded-md border px-3 py-2 text-sm"
+                onChange={(e) => setEditEmail(e.target.value.toLowerCase())}
+                className="rounded-md border px-3 py-2 text-sm lowercase"
                 style={{ borderColor: "var(--line)", color: "var(--ink)" }}
                 required
+                autoCapitalize="none"
+                spellCheck={false}
               />
             </label>
             <div className="md:col-span-2">

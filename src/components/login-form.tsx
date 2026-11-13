@@ -91,9 +91,11 @@ export function LoginForm() {
             required
             autoComplete="email"
             value={email}
-            onChange={(e) => setEmail(e.target.value)}
+            onChange={(e) => setEmail(e.target.value.toLowerCase())}
+            autoCapitalize="none"
+            spellCheck={false}
             disabled={loading}
-            className="rounded-md border px-3 py-2.5 outline-none focus:ring-2 disabled:opacity-60"
+            className="rounded-md border px-3 py-2.5 lowercase outline-none focus:ring-2 disabled:opacity-60"
             style={{
               borderColor: "var(--line)",
               background: "var(--panel)",

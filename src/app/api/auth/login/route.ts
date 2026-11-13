@@ -1,3 +1,5 @@
+import { createServerClient } from "@supabase/ssr";
+import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 import {
   checkLoginAllowed,
@@ -6,12 +8,18 @@ import {
   MAX_LOGIN_ATTEMPTS,
   recordLoginFailure,
 } from "@/lib/auth/login-rate-limit";
-import { createClient } from "@/lib/supabase/server";
+import { getSupabasePublishableKey, getSupabaseUrl } from "@/lib/supabase/env";
+
+type CookieToSet = {
+  name: string;
+  value: string;
+  options?: Parameters<NextResponse["cookies"]["set"]>[2];
+};
 
 /**
  * Server-side sign-in with rate limiting.
- * Passwords are verified by Supabase Auth, which stores them hashed with a unique salt
- * (bcrypt). This route never logs or persists plaintext passwords.
+ * Passwords are verified by Supabase Auth (bcrypt + salt).
+ * Session cookies are written onto the JSON response so the browser stays signed in.
  */
 export async function POST(request: Request) {
   let body: { email?: string; password?: string };
@@ -47,7 +55,31 @@ export async function POST(request: Request) {
       );
     }
 
-    const supabase = await createClient();
+    const cookieStore = await cookies();
+    const pendingCookies: CookieToSet[] = [];
+
+    const supabase = createServerClient(
+      getSupabaseUrl(),
+      getSupabasePublishableKey(),
+      {
+        cookies: {
+          getAll() {
+            return cookieStore.getAll();
+          },
+          setAll(cookiesToSet) {
+            cookiesToSet.forEach(({ name, value, options }) => {
+              try {
+                cookieStore.set(name, value, options);
+              } catch {
+                // Ignore if the cookie store rejects writes; we still attach to the response.
+              }
+              pendingCookies.push({ name, value, options });
+            });
+          },
+        },
+      },
+    );
+
     const { data, error } = await supabase.auth.signInWithPassword({
       email,
       password,
@@ -86,13 +118,19 @@ export async function POST(request: Request) {
 
     await clearLoginFailures(email);
 
-    return NextResponse.json({
+    const response = NextResponse.json({
       ok: true,
       user: {
         id: data.user.id,
         email: data.user.email,
       },
     });
+
+    for (const { name, value, options } of pendingCookies) {
+      response.cookies.set(name, value, options);
+    }
+
+    return response;
   } catch (err) {
     return NextResponse.json(
       { error: err instanceof Error ? err.message : "Sign-in failed" },
