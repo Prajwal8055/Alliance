@@ -5,7 +5,6 @@ import {
   formatCountdown,
   formatMoney,
   remainingEditMs,
-  shiftBookDate,
 } from "@/lib/dates";
 import type { DayStatus } from "@/lib/types";
 
@@ -16,6 +15,7 @@ export type EntryRow = {
   description: string;
   amount: number;
   editable_until: string;
+  created_by_name?: string;
 };
 
 type Props = {
@@ -35,7 +35,13 @@ type Props = {
   dayActionBusy?: boolean;
   onApproveDay?: () => void;
   onUnlockDay?: () => void;
-  onDateChange?: (date: string) => void;
+  rangeFrom?: string;
+  rangeTo?: string;
+  rangeActive?: boolean;
+  onRangeFromChange?: (date: string) => void;
+  onRangeToChange?: (date: string) => void;
+  onApplyRange?: () => void;
+  onClearRange?: () => void;
   onUpdateOpeningBalance?: (amount: number) => Promise<void>;
   onUnlockEntry?: (id: string) => Promise<void>;
   onAdd: (input: { description: string; amount: number; entry_date: string }) => Promise<void>;
@@ -117,13 +123,22 @@ export function EntriesPanel({
   dayActionBusy,
   onApproveDay,
   onUnlockDay,
-  onDateChange,
+  rangeFrom,
+  rangeTo,
+  rangeActive = false,
+  onRangeFromChange,
+  onRangeToChange,
+  onApplyRange,
+  onClearRange,
   onUpdateOpeningBalance,
   onUnlockEntry,
   onAdd,
   onUpdate,
   onDelete,
 }: Props) {
+  const showDateRange = Boolean(
+    onRangeFromChange && onRangeToChange && onApplyRange && rangeFrom && rangeTo,
+  );
   const showOpeningBalance = kind === "receipt" && openingBalance !== undefined;
   const openingAmount = Number(openingBalance ?? 0);
   // Opening balance always owns R-YYYY-0001; real receipts continue from 0002.
@@ -319,39 +334,53 @@ export function EntriesPanel({
               style={{ borderColor: "var(--line)", background: "#fff", color: "var(--ink)" }}
             />
           </label>
-          {onDateChange ? (
-            <div className="flex flex-col gap-1 text-xs" style={{ color: "var(--ink-muted)" }}>
-              <span>Sheet date</span>
-              <div className="flex items-center gap-1">
-                <button
-                  type="button"
-                  aria-label="Previous day"
-                  disabled={dayActionBusy}
-                  onClick={() => onDateChange(shiftBookDate(bookDate, -1))}
-                  className="inline-flex h-9 w-9 items-center justify-center rounded-md border text-base font-semibold transition disabled:opacity-50"
-                  style={{ borderColor: "var(--line)", background: "#fff", color: "var(--ink)" }}
-                >
-                  ‹
-                </button>
+          {showDateRange ? (
+            <div
+              className="flex flex-wrap items-end gap-2 rounded-xl border px-3 py-2"
+              style={{ borderColor: "var(--line)", background: "var(--panel)" }}
+            >
+              <label className="flex flex-col gap-1 text-xs" style={{ color: "var(--ink-muted)" }}>
+                From
                 <input
                   type="date"
-                  value={bookDate}
+                  value={rangeFrom}
                   disabled={dayActionBusy}
-                  onChange={(e) => onDateChange(e.target.value)}
+                  onChange={(e) => onRangeFromChange?.(e.target.value)}
                   className="rounded-md border px-3 py-2 text-sm"
                   style={{ borderColor: "var(--line)", background: "#fff", color: "var(--ink)" }}
                 />
+              </label>
+              <label className="flex flex-col gap-1 text-xs" style={{ color: "var(--ink-muted)" }}>
+                To
+                <input
+                  type="date"
+                  value={rangeTo}
+                  disabled={dayActionBusy}
+                  onChange={(e) => onRangeToChange?.(e.target.value)}
+                  className="rounded-md border px-3 py-2 text-sm"
+                  style={{ borderColor: "var(--line)", background: "#fff", color: "var(--ink)" }}
+                />
+              </label>
+              <button
+                type="button"
+                disabled={dayActionBusy}
+                onClick={() => onApplyRange?.()}
+                className="rounded-md px-3 py-2 text-sm font-semibold text-white disabled:opacity-60"
+                style={{ background: "var(--accent)" }}
+              >
+                Apply
+              </button>
+              {rangeActive && onClearRange ? (
                 <button
                   type="button"
-                  aria-label="Next day"
                   disabled={dayActionBusy}
-                  onClick={() => onDateChange(shiftBookDate(bookDate, 1))}
-                  className="inline-flex h-9 w-9 items-center justify-center rounded-md border text-base font-semibold transition disabled:opacity-50"
+                  onClick={() => onClearRange()}
+                  className="rounded-md border px-3 py-2 text-sm font-semibold disabled:opacity-60"
                   style={{ borderColor: "var(--line)", background: "#fff", color: "var(--ink)" }}
                 >
-                  ›
+                  Clear
                 </button>
-              </div>
+              ) : null}
             </div>
           ) : null}
           {canCreate && !formOpen ? (
@@ -483,6 +512,7 @@ export function EntriesPanel({
               </th>
               <th className="px-3 py-2.5 font-medium">Description</th>
               <th className="px-3 py-2.5 font-medium text-right">Amount</th>
+              <th className="px-3 py-2.5 font-medium">User</th>
               {showEditWindow ? (
                 <th className="w-0 px-2 py-2.5 text-center text-xs font-medium" title="Edit window">
                   Window
@@ -542,6 +572,9 @@ export function EntriesPanel({
                     formatMoney(openingAmount)
                   )}
                 </td>
+                <td className="px-3 py-2.5 whitespace-nowrap" style={{ color: "var(--ink-muted)" }}>
+                  —
+                </td>
                 {showEditWindow ? <td className="w-0 px-2 py-2.5" /> : null}
                 <td className="w-0 px-2 py-2.5 whitespace-nowrap">
                   {canEditOpeningBalance && onUpdateOpeningBalance && !editingOpening ? (
@@ -571,7 +604,7 @@ export function EntriesPanel({
             {filteredRows.length === 0 && !showOpeningInTable ? (
               <tr>
                 <td
-                  colSpan={showEditWindow ? 6 : 5}
+                  colSpan={showEditWindow ? 7 : 6}
                   className="px-3 py-8 text-center"
                   style={{ color: "var(--ink-muted)" }}
                 >
@@ -617,6 +650,9 @@ export function EntriesPanel({
                     <td className="px-3 py-2.5">{row.description}</td>
                     <td className="px-3 py-2.5 text-right whitespace-nowrap">
                       {formatMoney(row.amount)}
+                    </td>
+                    <td className="px-3 py-2.5 whitespace-nowrap">
+                      {row.created_by_name?.trim() || "—"}
                     </td>
                     {showEditWindow ? (
                       <td className="w-0 px-2 py-2.5 text-center whitespace-nowrap">

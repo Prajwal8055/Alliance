@@ -61,12 +61,35 @@ export function CashBookApp({
   const [rangeFrom, setRangeFrom] = useState(initialDate);
   const [rangeTo, setRangeTo] = useState(initialDate);
   const [rangeActive, setRangeActive] = useState(false);
+  const [profileNames, setProfileNames] = useState<Record<string, string>>({});
 
   const isBoss = currentProfile.role === "boss";
   const isToday = bookDate === todayBookDate();
   const dayOpen = day.status === "open" && !rangeActive;
   const timezone =
     process.env.NEXT_PUBLIC_CASHBOOK_TIMEZONE ?? "America/Los_Angeles";
+
+  function nameFor(userId: string | null | undefined) {
+    if (!userId) return "—";
+    if (profileNames[userId]?.trim()) return profileNames[userId].trim();
+    if (userId === currentProfile.id) {
+      return currentProfile.full_name?.trim() || "User";
+    }
+    return "User";
+  }
+
+  const loadProfiles = useCallback(async () => {
+    const { data } = await supabase.from("profiles").select("id, full_name");
+    const map: Record<string, string> = {};
+    for (const row of data ?? []) {
+      map[row.id] = row.full_name?.trim() || "User";
+    }
+    setProfileNames(map);
+  }, [supabase]);
+
+  useEffect(() => {
+    void loadProfiles();
+  }, [loadProfiles]);
 
   const loadDay = useCallback(
     async (date: string, closedDay?: CashBookDay | null) => {
@@ -215,7 +238,6 @@ export function CashBookApp({
   }
 
   async function applyDateRange() {
-    if (!isBoss) return;
     if (!rangeFrom || !rangeTo) {
       setMessage("Choose From and To dates");
       return;
@@ -224,6 +246,13 @@ export function CashBookApp({
       setMessage("From date must be on or before To date");
       return;
     }
+
+    // Same day → normal editable sheet
+    if (rangeFrom === rangeTo) {
+      await onDateChange(rangeFrom);
+      return;
+    }
+
     setBusy(true);
     setMessage(null);
     try {
@@ -376,7 +405,13 @@ export function CashBookApp({
         {isProfileView ? (
           <ProfilePanel
             profile={currentProfile}
-            onProfileUpdated={setCurrentProfile}
+            onProfileUpdated={(next) => {
+              setCurrentProfile(next);
+              setProfileNames((prev) => ({
+                ...prev,
+                [next.id]: next.full_name?.trim() || "User",
+              }));
+            }}
             onDataWiped={async () => {
               setTab("receipts");
               setBusy(true);
@@ -448,84 +483,32 @@ export function CashBookApp({
         </p>
       ) : null}
 
-      <div className="mt-6 flex flex-wrap items-end justify-between gap-3" style={{ fontFamily: "var(--font-body)" }}>
-        <div className="flex flex-wrap gap-2">
-          {(
-            [
-              ["receipts", "Receipts", "var(--accent)"] as const,
-              ["vouchers", "Cash voucher", "var(--danger)"] as const,
-            ]
-          ).map(([id, label, activeColor]) => (
-            <button
-              key={id}
-              type="button"
-              onClick={() => setTab(id)}
-              className="rounded-full px-4 py-2 text-sm font-semibold transition"
-              style={{
-                background: tab === id ? activeColor : "var(--panel)",
-                color: tab === id ? "#fff" : "var(--ink)",
-                border: `1px solid ${tab === id ? activeColor : "var(--line)"}`,
-              }}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
-
-        {isBoss ? (
-          <div
-            className="flex flex-wrap items-end gap-2 rounded-xl border px-3 py-2"
-            style={{ borderColor: "var(--line)", background: "var(--panel)" }}
+      <div className="mt-6 flex flex-wrap gap-2" style={{ fontFamily: "var(--font-body)" }}>
+        {(
+          [
+            ["receipts", "Receipts", "var(--accent)"] as const,
+            ["vouchers", "Cash voucher", "var(--danger)"] as const,
+          ]
+        ).map(([id, label, activeColor]) => (
+          <button
+            key={id}
+            type="button"
+            onClick={() => setTab(id)}
+            className="rounded-full px-4 py-2 text-sm font-semibold transition"
+            style={{
+              background: tab === id ? activeColor : "var(--panel)",
+              color: tab === id ? "#fff" : "var(--ink)",
+              border: `1px solid ${tab === id ? activeColor : "var(--line)"}`,
+            }}
           >
-            <label className="flex flex-col gap-1 text-xs" style={{ color: "var(--ink-muted)" }}>
-              From
-              <input
-                type="date"
-                value={rangeFrom}
-                disabled={busy}
-                onChange={(e) => setRangeFrom(e.target.value)}
-                className="rounded-md border px-3 py-2 text-sm"
-                style={{ borderColor: "var(--line)", background: "#fff", color: "var(--ink)" }}
-              />
-            </label>
-            <label className="flex flex-col gap-1 text-xs" style={{ color: "var(--ink-muted)" }}>
-              To
-              <input
-                type="date"
-                value={rangeTo}
-                disabled={busy}
-                onChange={(e) => setRangeTo(e.target.value)}
-                className="rounded-md border px-3 py-2 text-sm"
-                style={{ borderColor: "var(--line)", background: "#fff", color: "var(--ink)" }}
-              />
-            </label>
-            <button
-              type="button"
-              disabled={busy}
-              onClick={() => void applyDateRange()}
-              className="rounded-md px-3 py-2 text-sm font-semibold text-white disabled:opacity-60"
-              style={{ background: "var(--accent)" }}
-            >
-              Apply
-            </button>
-            {rangeActive ? (
-              <button
-                type="button"
-                disabled={busy}
-                onClick={() => void clearDateRange()}
-                className="rounded-md border px-3 py-2 text-sm font-semibold disabled:opacity-60"
-                style={{ borderColor: "var(--line)", background: "#fff", color: "var(--ink)" }}
-              >
-                Clear
-              </button>
-            ) : null}
-          </div>
-        ) : null}
+            {label}
+          </button>
+        ))}
       </div>
 
       {rangeActive ? (
         <p className="mt-3 text-sm" style={{ color: "var(--ink-muted)", fontFamily: "var(--font-body)" }}>
-          Showing {rangeFrom} to {rangeTo} (view only). Clear filter to edit a single day.
+          Showing {rangeFrom} to {rangeTo} (view only). Set From and To to the same day (or Clear) to edit.
         </p>
       ) : null}
 
@@ -546,7 +529,13 @@ export function CashBookApp({
             dayActionBusy={busy}
             onApproveDay={approve}
             onUnlockDay={unlock}
-            onDateChange={rangeActive ? undefined : onDateChange}
+            rangeFrom={rangeFrom}
+            rangeTo={rangeTo}
+            rangeActive={rangeActive}
+            onRangeFromChange={setRangeFrom}
+            onRangeToChange={setRangeTo}
+            onApplyRange={() => void applyDateRange()}
+            onClearRange={() => void clearDateRange()}
             onUpdateOpeningBalance={async (amount) => {
               const { error } = await supabase
                 .from("cash_book_days")
@@ -577,6 +566,7 @@ export function CashBookApp({
               description: r.description,
               amount: Number(r.amount),
               editable_until: r.editable_until,
+              created_by_name: nameFor(r.created_by),
             }))}
             onAdd={async (input) => {
               const sheetDate = await placeOnSheet(input.entry_date || bookDate);
@@ -627,7 +617,13 @@ export function CashBookApp({
             dayActionBusy={busy}
             onApproveDay={approve}
             onUnlockDay={unlock}
-            onDateChange={rangeActive ? undefined : onDateChange}
+            rangeFrom={rangeFrom}
+            rangeTo={rangeTo}
+            rangeActive={rangeActive}
+            onRangeFromChange={setRangeFrom}
+            onRangeToChange={setRangeTo}
+            onApplyRange={() => void applyDateRange()}
+            onClearRange={() => void clearDateRange()}
             onUnlockEntry={async (id) => {
               if (!dayOpen) {
                 const { error: dayError } = await supabase.rpc("unlock_cash_book_day", {
@@ -649,6 +645,7 @@ export function CashBookApp({
               description: v.description,
               amount: Number(v.amount),
               editable_until: v.editable_until,
+              created_by_name: nameFor(v.created_by),
             }))}
             onAdd={async (input) => {
               const sheetDate = await placeOnSheet(input.entry_date || bookDate);
