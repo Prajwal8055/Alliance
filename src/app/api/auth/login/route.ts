@@ -106,9 +106,7 @@ export async function POST(request: Request) {
 
       return NextResponse.json(
         {
-          error: `Invalid email or password. ${failure.remaining} attempt${
-            failure.remaining === 1 ? "" : "s"
-          } remaining.`,
+          error: "Invalid email or password",
           remaining: failure.remaining,
           maxAttempts: MAX_LOGIN_ATTEMPTS,
         },

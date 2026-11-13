@@ -3,11 +3,15 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 
+const MAX_ATTEMPTS = 5;
+
 export function LoginForm() {
   const router = useRouter();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [remaining, setRemaining] = useState<number | null>(null);
+  const [locked, setLocked] = useState(false);
   const [busy, setBusy] = useState(false);
   const [entering, setEntering] = useState(false);
 
@@ -29,17 +33,38 @@ export function LoginForm() {
       const body = (await res.json().catch(() => ({}))) as {
         error?: string;
         ok?: boolean;
+        remaining?: number;
+        maxAttempts?: number;
+        lockedUntil?: string;
+        retryAfterSec?: number;
       };
 
       if (!res.ok || !body.ok) {
         setBusy(false);
         setEntering(false);
+
+        if (res.status === 429 || body.lockedUntil) {
+          setLocked(true);
+          setRemaining(0);
+          setError(
+            body.error ||
+              "Too many failed sign-in attempts. Try again in 1 hour.",
+          );
+          return;
+        }
+
+        setLocked(false);
+        if (typeof body.remaining === "number") {
+          setRemaining(body.remaining);
+        }
         setError(body.error || "Invalid email or password");
         return;
       }
 
       // Only leave the login form after a confirmed success.
       setEntering(true);
+      setRemaining(null);
+      setLocked(false);
       router.replace("/");
       router.refresh();
     } catch {
@@ -98,7 +123,7 @@ export function LoginForm() {
             onChange={(e) => setEmail(e.target.value.toLowerCase())}
             autoCapitalize="none"
             spellCheck={false}
-            disabled={busy || entering}
+            disabled={busy || entering || locked}
             className="rounded-md border px-3 py-2.5 lowercase outline-none focus:ring-2 disabled:opacity-60"
             style={{
               borderColor: "var(--line)",
@@ -115,7 +140,7 @@ export function LoginForm() {
             autoComplete="current-password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
-            disabled={busy || entering}
+            disabled={busy || entering || locked}
             className="rounded-md border px-3 py-2.5 outline-none focus:ring-2 disabled:opacity-60"
             style={{
               borderColor: "var(--line)",
@@ -125,17 +150,30 @@ export function LoginForm() {
           />
         </label>
         {error ? (
-          <p className="text-sm" style={{ color: "var(--danger)", fontFamily: "var(--font-body)" }}>
-            {error}
+          <div className="flex flex-col gap-1" style={{ fontFamily: "var(--font-body)" }}>
+            <p className="text-sm" style={{ color: "var(--danger)" }}>
+              {error}
+            </p>
+            {!locked && remaining !== null ? (
+              <p className="text-sm" style={{ color: "var(--danger)" }}>
+                {remaining === 0
+                  ? "No attempts left. Account locked for 1 hour."
+                  : `${remaining} attempt${remaining === 1 ? "" : "s"} left before a 1 hour lock.`}
+              </p>
+            ) : null}
+          </div>
+        ) : (
+          <p className="text-xs" style={{ color: "var(--ink-muted)", fontFamily: "var(--font-body)" }}>
+            {MAX_ATTEMPTS} wrong passwords locks sign-in for 1 hour.
           </p>
-        ) : null}
+        )}
         <button
           type="submit"
-          disabled={busy || entering}
+          disabled={busy || entering || locked}
           className="mt-2 rounded-md px-4 py-3 font-semibold text-white transition disabled:opacity-60"
           style={{ background: "var(--accent)", fontFamily: "var(--font-body)" }}
         >
-          {busy ? "Checking…" : "Sign in"}
+          {locked ? "Locked for 1 hour" : busy ? "Checking…" : "Sign in"}
         </button>
       </form>
     </>
