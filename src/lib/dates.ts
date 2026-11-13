@@ -39,9 +39,9 @@ export function isPastCloseTime(now = new Date()): boolean {
 
 export function formatMoney(amount: number | string): string {
   const n = typeof amount === "string" ? Number(amount) : amount;
-  return new Intl.NumberFormat("en-US", {
+  return new Intl.NumberFormat("en-IN", {
     style: "currency",
-    currency: "USD",
+    currency: "INR",
   }).format(Number.isFinite(n) ? n : 0);
 }
 

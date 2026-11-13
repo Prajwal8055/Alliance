@@ -24,6 +24,14 @@ type Props = {
   bookDate: string;
   dayStatus: DayStatus;
   dayOpen: boolean;
+  showApprove?: boolean;
+  showUnlock?: boolean;
+  showEditWindow?: boolean;
+  canUnlockEntry?: boolean;
+  dayActionBusy?: boolean;
+  onApproveDay?: () => void;
+  onUnlockDay?: () => void;
+  onUnlockEntry?: (id: string) => Promise<void>;
   onAdd: (input: { description: string; amount: number; entry_date: string }) => Promise<void>;
   onUpdate: (
     id: string,
@@ -36,6 +44,34 @@ function canEditRow(row: EntryRow, dayOpen: boolean, now: number) {
   return dayOpen && remainingEditMs(row.editable_until, now) > 0;
 }
 
+function EditIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <path
+        d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+function DeleteIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <path
+        d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
 export function EntriesPanel({
   kind,
   title,
@@ -43,6 +79,14 @@ export function EntriesPanel({
   bookDate,
   dayStatus,
   dayOpen,
+  showApprove,
+  showUnlock,
+  showEditWindow = false,
+  canUnlockEntry = false,
+  dayActionBusy,
+  onApproveDay,
+  onUnlockDay,
+  onUnlockEntry,
   onAdd,
   onUpdate,
   onDelete,
@@ -52,6 +96,7 @@ export function EntriesPanel({
   const [amount, setAmount] = useState("");
   const [entryDate, setEntryDate] = useState(bookDate);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [showForm, setShowForm] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -84,6 +129,7 @@ export function EntriesPanel({
       });
       setDescription("");
       setAmount("");
+      setShowForm(false);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to save");
     } finally {
@@ -103,6 +149,7 @@ export function EntriesPanel({
         entry_date: entryDate,
       });
       setEditingId(null);
+      setShowForm(false);
       setDescription("");
       setAmount("");
     } catch (err) {
@@ -114,18 +161,23 @@ export function EntriesPanel({
 
   function startEdit(row: EntryRow) {
     setEditingId(row.id);
+    setShowForm(true);
     setDescription(row.description);
     setAmount(String(row.amount));
     setEntryDate(row.entry_date);
     setError(null);
   }
 
-  function cancelEdit() {
+  function cancelForm() {
     setEditingId(null);
+    setShowForm(false);
     setDescription("");
     setAmount("");
+    setEntryDate(bookDate);
     setError(null);
   }
+
+  const formOpen = Boolean(editingId) || showForm;
 
   return (
     <section style={{ fontFamily: "var(--font-body)" }}>
@@ -138,12 +190,37 @@ export function EntriesPanel({
             Numbers auto-generate and never repeat. Edit window: 10 minutes after create.
           </p>
         </div>
-        <p className="text-lg font-semibold">
-          Total {formatMoney(total)}
-        </p>
+        {canCreate && !formOpen ? (
+          <button
+            type="button"
+            aria-label={kind === "receipt" ? "Add receipt" : "Add voucher"}
+            onClick={() => {
+              setShowForm(true);
+              setEditingId(null);
+              setDescription("");
+              setAmount("");
+              setEntryDate(bookDate);
+              setError(null);
+            }}
+            className="inline-flex h-11 w-11 items-center justify-center rounded-full text-2xl font-semibold leading-none text-white"
+            style={{ background: "var(--accent)" }}
+          >
+            +
+          </button>
+        ) : null}
       </div>
 
-      {canCreate || editingId ? (
+      {!canCreate && !editingId ? (
+        <p className="mb-4 text-sm" style={{ color: "var(--ink-muted)" }}>
+          {dayStatus === "approved"
+            ? "This day is approved and locked."
+            : dayStatus === "pending_approval"
+              ? "Waiting for Boss approval — editing closed."
+              : "Editing is closed for this day."}
+        </p>
+      ) : null}
+
+      {formOpen && (canCreate || editingId) ? (
         <form
           onSubmit={editingId ? submitEdit : submitAdd}
           className="mb-5 grid gap-3 rounded-xl border p-4 md:grid-cols-[1fr_1.4fr_0.8fr_auto]"
@@ -193,27 +270,17 @@ export function EntriesPanel({
             >
               {editingId ? "Save" : "Add"}
             </button>
-            {editingId ? (
-              <button
-                type="button"
-                onClick={cancelEdit}
-                className="rounded-md border px-3 py-2 text-sm"
-                style={{ borderColor: "var(--line)" }}
-              >
-                Cancel
-              </button>
-            ) : null}
+            <button
+              type="button"
+              onClick={cancelForm}
+              className="rounded-md border px-3 py-2 text-sm"
+              style={{ borderColor: "var(--line)" }}
+            >
+              Cancel
+            </button>
           </div>
         </form>
-      ) : (
-        <p className="mb-4 text-sm" style={{ color: "var(--ink-muted)" }}>
-          {dayStatus === "approved"
-            ? "This day is approved and locked."
-            : dayStatus === "pending_approval"
-              ? "Waiting for Boss approval — editing closed."
-              : "Editing is closed for this day."}
-        </p>
-      )}
+      ) : null}
 
       {error ? (
         <p className="mb-3 text-sm" style={{ color: "var(--danger)" }}>
@@ -231,14 +298,24 @@ export function EntriesPanel({
               </th>
               <th className="px-3 py-2.5 font-medium">Description</th>
               <th className="px-3 py-2.5 font-medium text-right">Amount</th>
-              <th className="px-3 py-2.5 font-medium">Edit window</th>
-              <th className="px-3 py-2.5 font-medium">Actions</th>
+              {showEditWindow ? (
+                <th className="w-0 px-2 py-2.5 text-center text-xs font-medium" title="Edit window">
+                  Window
+                </th>
+              ) : null}
+              <th className="w-0 px-2 py-2.5 text-center text-xs font-medium">
+                <span className="sr-only">Actions</span>
+              </th>
             </tr>
           </thead>
           <tbody>
             {rows.length === 0 ? (
               <tr>
-                <td colSpan={6} className="px-3 py-8 text-center" style={{ color: "var(--ink-muted)" }}>
+                <td
+                  colSpan={showEditWindow ? 6 : 5}
+                  className="px-3 py-8 text-center"
+                  style={{ color: "var(--ink-muted)" }}
+                >
                   No entries yet.
                 </td>
               </tr>
@@ -246,6 +323,32 @@ export function EntriesPanel({
               rows.map((row) => {
                 const editable = canEditRow(row, dayOpen, now);
                 const left = remainingEditMs(row.editable_until, now);
+                const canUnlock = Boolean(canUnlockEntry && onUnlockEntry);
+
+                async function unlockRow(): Promise<boolean> {
+                  if (!onUnlockEntry) return false;
+                  if (
+                    !confirm(
+                      dayOpen
+                        ? `Unlock ${row.number} for 10 more minutes?`
+                        : `This day is locked. Unlock the day and reopen ${row.number} for 10 minutes?`,
+                    )
+                  ) {
+                    return false;
+                  }
+                  setBusy(true);
+                  setError(null);
+                  try {
+                    await onUnlockEntry(row.id);
+                    return true;
+                  } catch (err) {
+                    setError(err instanceof Error ? err.message : "Unlock failed");
+                    return false;
+                  } finally {
+                    setBusy(false);
+                  }
+                }
+
                 return (
                   <tr key={row.id} className="border-t" style={{ borderColor: "var(--line)" }}>
                     <td className="px-3 py-2.5 whitespace-nowrap">{row.entry_date}</td>
@@ -254,51 +357,96 @@ export function EntriesPanel({
                     <td className="px-3 py-2.5 text-right whitespace-nowrap">
                       {formatMoney(row.amount)}
                     </td>
-                    <td className="px-3 py-2.5 whitespace-nowrap">
-                      {editable ? (
-                        <span style={{ color: "var(--warn)" }}>{formatCountdown(left)} left</span>
-                      ) : (
-                        <span
-                          className="rounded-full px-2 py-0.5 text-xs font-semibold"
-                          style={{ background: "var(--locked-soft)", color: "var(--locked)" }}
-                        >
-                          Locked
-                        </span>
-                      )}
-                    </td>
-                    <td className="px-3 py-2.5 whitespace-nowrap">
-                      {editable ? (
-                        <div className="flex gap-2">
+                    {showEditWindow ? (
+                      <td className="w-0 px-2 py-2.5 text-center whitespace-nowrap">
+                        {editable ? (
+                          <span className="text-xs tabular-nums" style={{ color: "var(--warn)" }}>
+                            {formatCountdown(left)}
+                          </span>
+                        ) : canUnlock ? (
                           <button
                             type="button"
-                            className="text-sm font-semibold underline"
-                            style={{ color: "var(--accent)" }}
-                            onClick={() => startEdit(row)}
+                            disabled={busy || dayActionBusy}
+                            title="Click to unlock (Boss only)"
+                            className="rounded-full px-1.5 py-0.5 text-[10px] font-semibold leading-none transition hover:opacity-80 disabled:opacity-60"
+                            style={{ background: "var(--locked-soft)", color: "var(--locked)" }}
+                            onClick={() => void unlockRow()}
                           >
-                            Edit
+                            Locked
                           </button>
+                        ) : (
+                          <span
+                            className="rounded-full px-1.5 py-0.5 text-[10px] font-semibold leading-none"
+                            style={{ background: "var(--locked-soft)", color: "var(--locked)" }}
+                          >
+                            Locked
+                          </span>
+                        )}
+                      </td>
+                    ) : null}
+                    <td className="w-0 px-2 py-2.5 whitespace-nowrap">
+                      <div className="flex items-center justify-end gap-1">
+                        {editable ? (
+                          <>
+                            <button
+                              type="button"
+                              aria-label={`Edit ${row.number}`}
+                              title="Edit"
+                              className="inline-flex h-8 w-8 items-center justify-center rounded-md transition hover:bg-[var(--accent-soft)]"
+                              style={{ color: "var(--accent)" }}
+                              onClick={() => startEdit(row)}
+                            >
+                              <EditIcon />
+                            </button>
+                            <button
+                              type="button"
+                              aria-label={`Delete ${row.number}`}
+                              title="Delete"
+                              className="inline-flex h-8 w-8 items-center justify-center rounded-md transition hover:bg-[var(--danger-soft)]"
+                              style={{ color: "var(--danger)" }}
+                              onClick={async () => {
+                                if (!confirm(`Delete ${row.number}?`)) return;
+                                setBusy(true);
+                                try {
+                                  await onDelete(row.id);
+                                } catch (err) {
+                                  setError(err instanceof Error ? err.message : "Delete failed");
+                                } finally {
+                                  setBusy(false);
+                                }
+                              }}
+                            >
+                              <DeleteIcon />
+                            </button>
+                          </>
+                        ) : canUnlock ? (
                           <button
                             type="button"
-                            className="text-sm font-semibold underline"
-                            style={{ color: "var(--danger)" }}
+                            disabled={busy || dayActionBusy}
+                            aria-label={`Unlock and edit ${row.number}`}
+                            title="Unlock and edit"
+                            className="inline-flex h-8 w-8 items-center justify-center rounded-md transition hover:bg-[var(--accent-soft)] disabled:opacity-60"
+                            style={{ color: "var(--accent)" }}
                             onClick={async () => {
-                              if (!confirm(`Delete ${row.number}?`)) return;
-                              setBusy(true);
-                              try {
-                                await onDelete(row.id);
-                              } catch (err) {
-                                setError(err instanceof Error ? err.message : "Delete failed");
-                              } finally {
-                                setBusy(false);
-                              }
+                              const unlocked = await unlockRow();
+                              if (unlocked) startEdit(row);
                             }}
                           >
-                            Delete
+                            <EditIcon />
                           </button>
-                        </div>
-                      ) : (
-                        <span style={{ color: "var(--ink-muted)" }}>—</span>
-                      )}
+                        ) : (
+                          <button
+                            type="button"
+                            disabled
+                            aria-label="Editing locked"
+                            title="Locked"
+                            className="inline-flex h-8 w-8 items-center justify-center rounded-md opacity-40"
+                            style={{ color: "var(--ink-muted)" }}
+                          >
+                            <EditIcon />
+                          </button>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 );
@@ -306,6 +454,32 @@ export function EntriesPanel({
             )}
           </tbody>
         </table>
+      </div>
+
+      <div className="mt-3 flex flex-wrap items-center justify-end gap-3">
+        {showApprove ? (
+          <button
+            type="button"
+            disabled={dayActionBusy}
+            onClick={onApproveDay}
+            className="rounded-md px-3 py-2 text-sm font-semibold text-white disabled:opacity-60"
+            style={{ background: "var(--accent)" }}
+          >
+            Approve
+          </button>
+        ) : null}
+        {showUnlock ? (
+          <button
+            type="button"
+            disabled={dayActionBusy}
+            onClick={onUnlockDay}
+            className="rounded-md border px-3 py-2 text-sm font-semibold disabled:opacity-60"
+            style={{ borderColor: "var(--line)", background: "#fff" }}
+          >
+            Unlock
+          </button>
+        ) : null}
+        <p className="text-lg font-semibold">Total {formatMoney(total)}</p>
       </div>
     </section>
   );

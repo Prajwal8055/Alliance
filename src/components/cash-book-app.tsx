@@ -2,9 +2,11 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import { AccountMenu } from "@/components/account-menu";
 import { ActivityLog } from "@/components/activity-log";
 import { ApprovalModal } from "@/components/approval-modal";
 import { EntriesPanel } from "@/components/entries-panel";
+import { ProfilePanel } from "@/components/profile-panel";
 import { StatusBadge } from "@/components/status-badge";
 import { UsersPanel } from "@/components/users-panel";
 import {
@@ -21,7 +23,7 @@ import type {
   Voucher,
 } from "@/lib/types";
 
-type Tab = "receipts" | "vouchers" | "activity" | "users";
+type Tab = "receipts" | "vouchers" | "activity" | "users" | "profile";
 
 type Props = {
   initialDate: string;
@@ -51,12 +53,13 @@ export function CashBookApp({
   const [receipts, setReceipts] = useState(initialReceipts);
   const [vouchers, setVouchers] = useState(initialVouchers);
   const [logs, setLogs] = useState(initialLogs);
+  const [currentProfile, setCurrentProfile] = useState(profile);
   const [tab, setTab] = useState<Tab>("receipts");
   const [showApproval, setShowApproval] = useState(false);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
 
-  const isBoss = profile.role === "boss";
+  const isBoss = currentProfile.role === "boss";
   const isToday = bookDate === todayBookDate();
   const dayOpen = day.status === "open";
   const timezone =
@@ -186,6 +189,46 @@ export function CashBookApp({
 
   const receiptTotal = receipts.reduce((s, r) => s + Number(r.amount), 0);
   const voucherTotal = vouchers.reduce((s, r) => s + Number(r.amount), 0);
+  const isProfileView = tab === "profile";
+
+  if (isProfileView) {
+    return (
+      <div className="mx-auto flex w-full max-w-2xl flex-1 flex-col px-4 py-8">
+        <button
+          type="button"
+          onClick={() => setTab("receipts")}
+          className="mb-6 inline-flex w-fit items-center gap-2 rounded-full border px-3.5 py-2 text-sm font-semibold transition hover:bg-[var(--bg-deep)]"
+          style={{
+            borderColor: "var(--line)",
+            background: "var(--panel)",
+            color: "var(--ink)",
+            fontFamily: "var(--font-body)",
+          }}
+        >
+          <span aria-hidden="true">←</span>
+          Back
+        </button>
+
+        <ProfilePanel
+          profile={currentProfile}
+          onProfileUpdated={setCurrentProfile}
+          onDataWiped={async () => {
+            setTab("receipts");
+            setBusy(true);
+            setMessage(null);
+            try {
+              await refresh(bookDate);
+              router.refresh();
+            } catch (err) {
+              setMessage(err instanceof Error ? err.message : "Failed to reload after wipe");
+            } finally {
+              setBusy(false);
+            }
+          }}
+        />
+      </div>
+    );
+  }
 
   return (
     <div className="mx-auto flex w-full max-w-6xl flex-1 flex-col px-4 py-8">
@@ -199,7 +242,7 @@ export function CashBookApp({
           </p>
           <h1 className="mt-1 text-4xl font-semibold tracking-tight">Cash Book</h1>
           <p className="mt-1 text-sm" style={{ color: "var(--ink-muted)", fontFamily: "var(--font-body)" }}>
-            Signed in as {profile.full_name || "User"} · {profile.role}
+            {currentProfile.full_name?.trim() || (isBoss ? "Boss" : "Accounts")}
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-3" style={{ fontFamily: "var(--font-body)" }}>
@@ -214,68 +257,16 @@ export function CashBookApp({
             />
           </label>
           <StatusBadge status={day.status} />
-          {isBoss && day.status !== "approved" ? (
-            <button
-              type="button"
-              disabled={busy}
-              onClick={approve}
-              className="rounded-md px-3 py-2 text-sm font-semibold text-white disabled:opacity-60"
-              style={{ background: "var(--accent)" }}
-            >
-              Approve
-            </button>
-          ) : null}
-          {isBoss && day.status === "approved" ? (
-            <button
-              type="button"
-              disabled={busy}
-              onClick={unlock}
-              className="rounded-md border px-3 py-2 text-sm font-semibold disabled:opacity-60"
-              style={{ borderColor: "var(--line)", background: "var(--panel)" }}
-            >
-              Unlock
-            </button>
-          ) : null}
-          <button
-            type="button"
-            onClick={signOut}
-            className="rounded-md border px-3 py-2 text-sm"
-            style={{ borderColor: "var(--line)", background: "var(--panel)" }}
-          >
-            Sign out
-          </button>
+          <AccountMenu
+            profile={currentProfile}
+            isBoss={isBoss}
+            onOpenProfile={() => setTab("profile")}
+            onOpenActivity={() => setTab("activity")}
+            onOpenUsers={() => setTab("users")}
+            onSignOut={signOut}
+          />
         </div>
       </header>
-
-      <div
-        className="mt-6 grid gap-3 rounded-2xl border p-4 sm:grid-cols-3"
-        style={{ borderColor: "var(--line)", background: "var(--panel)", fontFamily: "var(--font-body)" }}
-      >
-        <div>
-          <p className="text-xs uppercase tracking-wide" style={{ color: "var(--ink-muted)" }}>
-            Receipts in
-          </p>
-          <p className="mt-1 text-2xl font-semibold" style={{ fontFamily: "var(--font-display)" }}>
-            {formatMoney(receiptTotal)}
-          </p>
-        </div>
-        <div>
-          <p className="text-xs uppercase tracking-wide" style={{ color: "var(--ink-muted)" }}>
-            Vouchers out
-          </p>
-          <p className="mt-1 text-2xl font-semibold" style={{ fontFamily: "var(--font-display)" }}>
-            {formatMoney(voucherTotal)}
-          </p>
-        </div>
-        <div>
-          <p className="text-xs uppercase tracking-wide" style={{ color: "var(--ink-muted)" }}>
-            Net
-          </p>
-          <p className="mt-1 text-2xl font-semibold" style={{ fontFamily: "var(--font-display)" }}>
-            {formatMoney(receiptTotal - voucherTotal)}
-          </p>
-        </div>
-      </div>
 
       {message ? (
         <p className="mt-4 text-sm" style={{ color: "var(--danger)", fontFamily: "var(--font-body)" }}>
@@ -286,21 +277,19 @@ export function CashBookApp({
       <div className="mt-6 flex flex-wrap gap-2" style={{ fontFamily: "var(--font-body)" }}>
         {(
           [
-            ["receipts", "Receipts"],
-            ["vouchers", "Cash voucher"],
-            ["activity", "Changes log"],
-            ...(isBoss ? ([["users", "Users"]] as const) : []),
-          ] as const
-        ).map(([id, label]) => (
+            ["receipts", "Receipts", "var(--accent)"] as const,
+            ["vouchers", "Cash voucher", "var(--danger)"] as const,
+          ]
+        ).map(([id, label, activeColor]) => (
           <button
             key={id}
             type="button"
             onClick={() => setTab(id)}
             className="rounded-full px-4 py-2 text-sm font-semibold transition"
             style={{
-              background: tab === id ? "var(--accent)" : "var(--panel)",
+              background: tab === id ? activeColor : "var(--panel)",
               color: tab === id ? "#fff" : "var(--ink)",
-              border: `1px solid ${tab === id ? "var(--accent)" : "var(--line)"}`,
+              border: `1px solid ${tab === id ? activeColor : "var(--line)"}`,
             }}
           >
             {label}
@@ -316,6 +305,27 @@ export function CashBookApp({
             bookDate={bookDate}
             dayStatus={day.status}
             dayOpen={dayOpen}
+            showApprove={isBoss && day.status !== "approved"}
+            showUnlock={isBoss && day.status === "approved"}
+            showEditWindow={isBoss}
+            canUnlockEntry={isBoss}
+            dayActionBusy={busy}
+            onApproveDay={approve}
+            onUnlockDay={unlock}
+            onUnlockEntry={async (id) => {
+              if (!dayOpen) {
+                const { error: dayError } = await supabase.rpc("unlock_cash_book_day", {
+                  p_date: bookDate,
+                });
+                if (dayError) throw dayError;
+              }
+              const { error } = await supabase.rpc("unlock_entry", {
+                p_kind: "receipt",
+                p_id: id,
+              });
+              if (error) throw error;
+              await refresh(bookDate);
+            }}
             rows={receipts.map((r) => ({
               id: r.id,
               number: r.receipt_number,
@@ -330,7 +340,7 @@ export function CashBookApp({
                 entry_date: input.entry_date || bookDate,
                 description: input.description,
                 amount: input.amount,
-                created_by: profile.id,
+                created_by: currentProfile.id,
               });
               if (error) throw error;
               await refresh(bookDate);
@@ -362,6 +372,27 @@ export function CashBookApp({
             bookDate={bookDate}
             dayStatus={day.status}
             dayOpen={dayOpen}
+            showApprove={isBoss && day.status !== "approved"}
+            showUnlock={isBoss && day.status === "approved"}
+            showEditWindow={isBoss}
+            canUnlockEntry={isBoss}
+            dayActionBusy={busy}
+            onApproveDay={approve}
+            onUnlockDay={unlock}
+            onUnlockEntry={async (id) => {
+              if (!dayOpen) {
+                const { error: dayError } = await supabase.rpc("unlock_cash_book_day", {
+                  p_date: bookDate,
+                });
+                if (dayError) throw dayError;
+              }
+              const { error } = await supabase.rpc("unlock_entry", {
+                p_kind: "voucher",
+                p_id: id,
+              });
+              if (error) throw error;
+              await refresh(bookDate);
+            }}
             rows={vouchers.map((v) => ({
               id: v.id,
               number: v.voucher_number,
@@ -376,7 +407,7 @@ export function CashBookApp({
                 entry_date: input.entry_date || bookDate,
                 description: input.description,
                 amount: input.amount,
-                created_by: profile.id,
+                created_by: currentProfile.id,
               });
               if (error) throw error;
               await refresh(bookDate);
@@ -403,7 +434,7 @@ export function CashBookApp({
 
         {tab === "activity" ? (
           <section>
-            <h2 className="mb-2 text-2xl font-semibold">Changes log</h2>
+            <h2 className="mb-2 text-2xl font-semibold">Log</h2>
             <p className="mb-4 text-sm" style={{ color: "var(--ink-muted)", fontFamily: "var(--font-body)" }}>
               Every create, edit, and delete by Boss or Accounts is recorded for this day.
             </p>
@@ -413,6 +444,51 @@ export function CashBookApp({
 
         {tab === "users" && isBoss ? <UsersPanel /> : null}
       </div>
+
+      {(tab === "receipts" || tab === "vouchers") ? (
+        <div
+          className="mt-6 grid gap-3 rounded-2xl border p-4 sm:grid-cols-2 lg:grid-cols-4"
+          style={{ borderColor: "var(--line)", background: "var(--panel)", fontFamily: "var(--font-body)" }}
+        >
+          <div>
+            <p className="text-xs uppercase tracking-wide" style={{ color: "var(--ink-muted)" }}>
+              Opening balance
+            </p>
+            <p className="mt-1 text-2xl font-semibold" style={{ fontFamily: "var(--font-display)" }}>
+              {formatMoney(Number(day.opening_balance ?? 0))}
+            </p>
+          </div>
+          <div>
+            <p className="text-xs uppercase tracking-wide" style={{ color: "var(--ink-muted)" }}>
+              Receipts in
+            </p>
+            <p className="mt-1 text-2xl font-semibold" style={{ fontFamily: "var(--font-display)" }}>
+              {formatMoney(receiptTotal)}
+            </p>
+          </div>
+          <div>
+            <p className="text-xs uppercase tracking-wide" style={{ color: "var(--ink-muted)" }}>
+              Vouchers out
+            </p>
+            <p className="mt-1 text-2xl font-semibold" style={{ fontFamily: "var(--font-display)" }}>
+              {formatMoney(voucherTotal)}
+            </p>
+          </div>
+          <div>
+            <p className="text-xs uppercase tracking-wide" style={{ color: "var(--ink-muted)" }}>
+              Cash balance
+            </p>
+            <p className="mt-1 text-2xl font-semibold" style={{ fontFamily: "var(--font-display)" }}>
+              {formatMoney(
+                Number(day.opening_balance ?? 0) + receiptTotal - voucherTotal,
+              )}
+            </p>
+            <p className="mt-0.5 text-xs" style={{ color: "var(--ink-muted)" }}>
+              Closing for this day · carries to next opening
+            </p>
+          </div>
+        </div>
+      ) : null}
 
       {showApproval ? (
         <ApprovalModal

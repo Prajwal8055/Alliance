@@ -19,7 +19,7 @@ export async function POST(request: Request, { params }: Params) {
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
   }
 
-  const password = body.password ?? "";
+  const password = (body.password ?? "").trim();
   if (password.length < 8) {
     return NextResponse.json(
       { error: "Password must be at least 8 characters" },
@@ -47,8 +47,15 @@ export async function POST(request: Request, { params }: Params) {
       );
     }
 
+    const { data: authUser, error: getError } =
+      await admin.auth.admin.getUserById(id);
+    if (getError || !authUser.user) {
+      return NextResponse.json({ error: "Auth user not found" }, { status: 404 });
+    }
+
     const { error } = await admin.auth.admin.updateUserById(id, {
       password,
+      email_confirm: true,
     });
 
     if (error) {

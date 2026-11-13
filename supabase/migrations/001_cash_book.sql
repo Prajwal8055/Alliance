@@ -74,11 +74,16 @@ create table if not exists public.cash_book_days (
   id uuid primary key default gen_random_uuid(),
   book_date date not null unique,
   status public.day_status not null default 'open',
+  opening_balance numeric(14, 2) not null default 0,
   closed_at timestamptz,
   approved_at timestamptz,
   approved_by uuid references public.profiles (id),
   created_at timestamptz not null default now()
 );
+
+-- Existing DBs created before opening_balance: CREATE TABLE IF NOT EXISTS won't add it
+alter table public.cash_book_days
+  add column if not exists opening_balance numeric(14, 2) not null default 0;
 
 alter table public.cash_book_days enable row level security;
 
@@ -256,7 +261,9 @@ begin
   if new.receipt_number is distinct from old.receipt_number then
     raise exception 'receipt_number cannot be changed';
   end if;
-  if new.editable_until is distinct from old.editable_until then
+  -- Boss may extend editable_until via unlock_entry; others cannot.
+  if new.editable_until is distinct from old.editable_until
+     and not public.is_boss() then
     raise exception 'editable_until cannot be changed';
   end if;
   if new.created_by is distinct from old.created_by then
@@ -283,7 +290,8 @@ begin
   if new.voucher_number is distinct from old.voucher_number then
     raise exception 'voucher_number cannot be changed';
   end if;
-  if new.editable_until is distinct from old.editable_until then
+  if new.editable_until is distinct from old.editable_until
+     and not public.is_boss() then
     raise exception 'editable_until cannot be changed';
   end if;
   if new.created_by is distinct from old.created_by then
@@ -582,6 +590,25 @@ $$;
 grant execute on function public.approve_cash_book_day(date) to authenticated;
 grant execute on function public.unlock_cash_book_day(date) to authenticated;
 
+create or replace function public.day_closing_balance(p_date date)
+returns numeric
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select coalesce(
+    (
+      select d.opening_balance
+        + coalesce((select sum(amount) from public.receipts r where r.book_date = d.book_date), 0)
+        - coalesce((select sum(amount) from public.vouchers v where v.book_date = d.book_date), 0)
+      from public.cash_book_days d
+      where d.book_date = p_date
+    ),
+    0
+  );
+$$;
+
 create or replace function public.ensure_cash_book_day(p_date date)
 returns public.cash_book_days
 language plpgsql
@@ -590,16 +617,29 @@ set search_path = public
 as $$
 declare
   d public.cash_book_days;
+  prev_close numeric(14, 2) := 0;
 begin
-  insert into public.cash_book_days (book_date)
-  values (p_date)
+  select public.day_closing_balance(p_date - 1) into prev_close;
+
+  insert into public.cash_book_days (book_date, opening_balance)
+  values (p_date, coalesce(prev_close, 0))
   on conflict (book_date) do nothing;
+
+  update public.cash_book_days
+  set opening_balance = coalesce(prev_close, 0)
+  where book_date = p_date
+    and status = 'open'
+    and opening_balance = 0
+    and coalesce(prev_close, 0) <> 0
+    and not exists (select 1 from public.receipts r where r.book_date = p_date)
+    and not exists (select 1 from public.vouchers v where v.book_date = p_date);
 
   select * into d from public.cash_book_days where book_date = p_date;
   return d;
 end;
 $$;
 
+grant execute on function public.day_closing_balance(date) to authenticated;
 grant execute on function public.ensure_cash_book_day(date) to authenticated;
 
 create or replace function public.close_cash_book_day_if_due(

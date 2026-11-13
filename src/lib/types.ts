@@ -14,6 +14,7 @@ export type CashBookDay = {
   id: string;
   book_date: string;
   status: DayStatus;
+  opening_balance: number;
   closed_at: string | null;
   approved_at: string | null;
   approved_by: string | null;
