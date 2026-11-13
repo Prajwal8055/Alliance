@@ -90,7 +90,7 @@ export function AccountMenu({
                 onOpenUsers();
               }}
             >
-              Users
+              Manage users
             </button>
           ) : null}
           <button

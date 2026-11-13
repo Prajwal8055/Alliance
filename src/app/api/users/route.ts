@@ -62,7 +62,7 @@ export async function POST(request: Request) {
   }
 
   const email = body.email?.trim().toLowerCase();
-  const password = body.password ?? "";
+  const password = (body.password ?? "").trim();
   const fullName = body.full_name?.trim() || "Accounts";
 
   if (!email || !password) {
@@ -71,9 +71,12 @@ export async function POST(request: Request) {
       { status: 400 },
     );
   }
+  if (!email.includes("@")) {
+    return NextResponse.json({ error: "Enter a valid email address" }, { status: 400 });
+  }
   if (password.length < 8) {
     return NextResponse.json(
-      { error: "Password must be at least 8 characters" },
+      { error: "Temporary password must be at least 8 characters" },
       { status: 400 },
     );
   }
@@ -91,20 +94,33 @@ export async function POST(request: Request) {
     });
 
     if (error) {
-      return NextResponse.json({ error: error.message }, { status: 400 });
+      const msg = /already|registered|exists/i.test(error.message)
+        ? "A user with this email already exists"
+        : error.message;
+      return NextResponse.json({ error: msg }, { status: 400 });
     }
 
-    if (data.user) {
-      await admin.from("profiles").upsert({
-        id: data.user.id,
-        full_name: fullName,
-        role: "accounts",
-      });
+    if (!data.user) {
+      return NextResponse.json({ error: "User was not created" }, { status: 500 });
+    }
+
+    const { error: profileError } = await admin.from("profiles").upsert({
+      id: data.user.id,
+      full_name: fullName,
+      role: "accounts",
+    });
+    if (profileError) {
+      return NextResponse.json(
+        {
+          error: `User created in Auth but profile failed: ${profileError.message}`,
+        },
+        { status: 500 },
+      );
     }
 
     return NextResponse.json({
       user: {
-        id: data.user?.id,
+        id: data.user.id,
         email,
         full_name: fullName,
         role: "accounts",

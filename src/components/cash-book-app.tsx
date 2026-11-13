@@ -190,10 +190,16 @@ export function CashBookApp({
   const receiptTotal = receipts.reduce((s, r) => s + Number(r.amount), 0);
   const voucherTotal = vouchers.reduce((s, r) => s + Number(r.amount), 0);
   const isProfileView = tab === "profile";
+  const isUsersView = tab === "users" && isBoss;
+  const isActivityView = tab === "activity";
 
-  if (isProfileView) {
+  if (isProfileView || isUsersView || isActivityView) {
     return (
-      <div className="mx-auto flex w-full max-w-2xl flex-1 flex-col px-4 py-8">
+      <div
+        className={`mx-auto flex w-full flex-1 flex-col px-4 py-8 ${
+          isProfileView ? "max-w-2xl" : "max-w-6xl"
+        }`}
+      >
         <button
           type="button"
           onClick={() => setTab("receipts")}
@@ -209,23 +215,49 @@ export function CashBookApp({
           Back
         </button>
 
-        <ProfilePanel
-          profile={currentProfile}
-          onProfileUpdated={setCurrentProfile}
-          onDataWiped={async () => {
-            setTab("receipts");
-            setBusy(true);
-            setMessage(null);
-            try {
-              await refresh(bookDate);
-              router.refresh();
-            } catch (err) {
-              setMessage(err instanceof Error ? err.message : "Failed to reload after wipe");
-            } finally {
-              setBusy(false);
-            }
-          }}
-        />
+        {isProfileView ? (
+          <ProfilePanel
+            profile={currentProfile}
+            onProfileUpdated={setCurrentProfile}
+            onDataWiped={async () => {
+              setTab("receipts");
+              setBusy(true);
+              setMessage(null);
+              try {
+                await refresh(bookDate);
+                router.refresh();
+              } catch (err) {
+                setMessage(err instanceof Error ? err.message : "Failed to reload after wipe");
+              } finally {
+                setBusy(false);
+              }
+            }}
+          />
+        ) : null}
+
+        {isUsersView ? (
+          <div
+            className="rounded-2xl border p-5 shadow-[var(--shadow)]"
+            style={{ borderColor: "var(--line)", background: "var(--panel)" }}
+          >
+            <UsersPanel />
+          </div>
+        ) : null}
+
+        {isActivityView ? (
+          <div
+            className="rounded-2xl border p-5 shadow-[var(--shadow)]"
+            style={{ borderColor: "var(--line)", background: "var(--panel)" }}
+          >
+            <section>
+              <h2 className="mb-2 text-2xl font-semibold">Log</h2>
+              <p className="mb-4 text-sm" style={{ color: "var(--ink-muted)", fontFamily: "var(--font-body)" }}>
+                Every create, edit, and delete by Boss or Accounts is recorded for this day.
+              </p>
+              <ActivityLog logs={logs} />
+            </section>
+          </div>
+        ) : null}
       </div>
     );
   }
@@ -432,17 +464,6 @@ export function CashBookApp({
           />
         ) : null}
 
-        {tab === "activity" ? (
-          <section>
-            <h2 className="mb-2 text-2xl font-semibold">Log</h2>
-            <p className="mb-4 text-sm" style={{ color: "var(--ink-muted)", fontFamily: "var(--font-body)" }}>
-              Every create, edit, and delete by Boss or Accounts is recorded for this day.
-            </p>
-            <ActivityLog logs={logs} />
-          </section>
-        ) : null}
-
-        {tab === "users" && isBoss ? <UsersPanel /> : null}
       </div>
 
       {(tab === "receipts" || tab === "vouchers") ? (
