@@ -8,11 +8,12 @@ export function LoginForm() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [entering, setEntering] = useState(false);
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
-    setLoading(true);
+    setBusy(true);
     setError(null);
 
     try {
@@ -20,7 +21,7 @@ export function LoginForm() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          email: email.trim(),
+          email: email.trim().toLowerCase(),
           password: password.trim(),
         }),
       });
@@ -30,24 +31,27 @@ export function LoginForm() {
         ok?: boolean;
       };
 
-      if (!res.ok) {
-        setLoading(false);
-        setError(body.error || "Sign-in failed");
+      if (!res.ok || !body.ok) {
+        setBusy(false);
+        setEntering(false);
+        setError(body.error || "Invalid email or password");
         return;
       }
 
-      // Keep the loading screen up while the app loads after sign-in
+      // Only leave the login form after a confirmed success.
+      setEntering(true);
       router.replace("/");
       router.refresh();
     } catch {
-      setLoading(false);
+      setBusy(false);
+      setEntering(false);
       setError("Sign-in failed. Check your connection and try again.");
     }
   }
 
   return (
     <>
-      {loading ? (
+      {entering ? (
         <div
           className="fixed inset-0 z-50 flex flex-col items-center justify-center gap-4 px-4"
           style={{
@@ -94,7 +98,7 @@ export function LoginForm() {
             onChange={(e) => setEmail(e.target.value.toLowerCase())}
             autoCapitalize="none"
             spellCheck={false}
-            disabled={loading}
+            disabled={busy || entering}
             className="rounded-md border px-3 py-2.5 lowercase outline-none focus:ring-2 disabled:opacity-60"
             style={{
               borderColor: "var(--line)",
@@ -111,7 +115,7 @@ export function LoginForm() {
             autoComplete="current-password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
-            disabled={loading}
+            disabled={busy || entering}
             className="rounded-md border px-3 py-2.5 outline-none focus:ring-2 disabled:opacity-60"
             style={{
               borderColor: "var(--line)",
@@ -127,11 +131,11 @@ export function LoginForm() {
         ) : null}
         <button
           type="submit"
-          disabled={loading}
+          disabled={busy || entering}
           className="mt-2 rounded-md px-4 py-3 font-semibold text-white transition disabled:opacity-60"
           style={{ background: "var(--accent)", fontFamily: "var(--font-body)" }}
         >
-          {loading ? "Signing in…" : "Sign in"}
+          {busy ? "Checking…" : "Sign in"}
         </button>
       </form>
     </>
