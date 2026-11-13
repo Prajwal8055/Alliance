@@ -2,6 +2,7 @@ export type UserRole = "boss" | "accounts";
 export type DayStatus = "open" | "pending_approval" | "approved";
 export type AuditAction = "insert" | "update" | "delete";
 export type EntryKind = "receipt" | "voucher";
+export type AdvanceStatus = "pending" | "approved" | "repaid";
 
 export type Profile = {
   id: string;
@@ -44,6 +45,23 @@ export type Voucher = {
   created_by: string;
   created_at: string;
   editable_until: string;
+  updated_at: string;
+};
+
+export type Advance = {
+  id: string;
+  book_date: string;
+  entry_date: string;
+  sl_no: number;
+  person_name: string;
+  amount: number;
+  status: AdvanceStatus;
+  created_by: string;
+  approved_by: string | null;
+  approved_at: string | null;
+  repaid_date: string | null;
+  repaid_by: string | null;
+  created_at: string;
   updated_at: string;
 };
 

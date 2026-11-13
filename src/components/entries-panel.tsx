@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   formatCountdown,
+  formatDisplayDate,
   formatMoney,
   remainingEditMs,
 } from "@/lib/dates";
@@ -40,6 +41,10 @@ type Props = {
   rangeFrom?: string;
   rangeTo?: string;
   rangeActive?: boolean;
+  /** When set, From/To cannot be changed (Accounts = today only). */
+  dateRangeLocked?: boolean;
+  /** When set, entry form date is fixed (Accounts = today). */
+  lockedEntryDate?: string;
   onRangeFromChange?: (date: string) => void;
   onRangeToChange?: (date: string) => void;
   onApplyRange?: () => void;
@@ -135,6 +140,8 @@ export function EntriesPanel({
   rangeFrom,
   rangeTo,
   rangeActive = false,
+  dateRangeLocked = false,
+  lockedEntryDate,
   onRangeFromChange,
   onRangeToChange,
   onApplyRange,
@@ -175,8 +182,9 @@ export function EntriesPanel({
   }, []);
 
   useEffect(() => {
-    if (!editingId) setEntryDate(bookDate);
-  }, [bookDate, editingId]);
+    if (editingId) return;
+    setEntryDate(lockedEntryDate || bookDate);
+  }, [bookDate, editingId, lockedEntryDate]);
 
   const formOpen = Boolean(editingId) || showForm;
 
@@ -249,7 +257,12 @@ export function EntriesPanel({
   async function submitAdd(e: React.FormEvent) {
     e.preventDefault();
     if (!canCreate) return;
-    const validationError = validateEntryFields({ entryDate, description, amount });
+    const dateValue = (lockedEntryDate || entryDate).trim();
+    const validationError = validateEntryFields({
+      entryDate: dateValue,
+      description,
+      amount,
+    });
     if (validationError) {
       setError(validationError);
       return;
@@ -260,11 +273,11 @@ export function EntriesPanel({
       await onAdd({
         description: description.trim(),
         amount: Number(amount),
-        entry_date: entryDate.trim(),
+        entry_date: dateValue,
       });
       setDescription("");
       setAmount("");
-      setEntryDate(bookDate);
+      setEntryDate(lockedEntryDate || bookDate);
       // Keep form open for fast entry; jump back to description after date stays
       window.setTimeout(() => descriptionRef.current?.focus(), 0);
     } catch (err) {
@@ -277,7 +290,12 @@ export function EntriesPanel({
   async function submitEdit(e: React.FormEvent) {
     e.preventDefault();
     if (!editingId) return;
-    const validationError = validateEntryFields({ entryDate, description, amount });
+    const dateValue = (lockedEntryDate || entryDate).trim();
+    const validationError = validateEntryFields({
+      entryDate: dateValue,
+      description,
+      amount,
+    });
     if (validationError) {
       setError(validationError);
       return;
@@ -288,7 +306,7 @@ export function EntriesPanel({
       await onUpdate(editingId, {
         description: description.trim(),
         amount: Number(amount),
-        entry_date: entryDate.trim(),
+        entry_date: dateValue,
       });
       setEditingId(null);
       setShowForm(false);
@@ -356,7 +374,7 @@ export function EntriesPanel({
                 <input
                   type="date"
                   value={rangeFrom}
-                  disabled={dayActionBusy}
+                  disabled={dayActionBusy || dateRangeLocked}
                   onChange={(e) => onRangeFromChange?.(e.target.value)}
                   className="rounded-md border px-3 py-2 text-sm"
                   style={{ borderColor: "var(--line)", background: "#fff", color: "var(--ink)" }}
@@ -367,22 +385,25 @@ export function EntriesPanel({
                 <input
                   type="date"
                   value={rangeTo}
-                  disabled={dayActionBusy}
+                  min={rangeFrom}
+                  disabled={dayActionBusy || dateRangeLocked}
                   onChange={(e) => onRangeToChange?.(e.target.value)}
                   className="rounded-md border px-3 py-2 text-sm"
                   style={{ borderColor: "var(--line)", background: "#fff", color: "var(--ink)" }}
                 />
               </label>
-              <button
-                type="button"
-                disabled={dayActionBusy}
-                onClick={() => onApplyRange?.()}
-                className="rounded-md px-3 py-2 text-sm font-semibold text-white disabled:opacity-60"
-                style={{ background: "var(--accent)" }}
-              >
-                Apply
-              </button>
-              {rangeActive && onClearRange ? (
+              {!dateRangeLocked ? (
+                <button
+                  type="button"
+                  disabled={dayActionBusy}
+                  onClick={() => onApplyRange?.()}
+                  className="rounded-md px-3 py-2 text-sm font-semibold text-white disabled:opacity-60"
+                  style={{ background: "var(--accent)" }}
+                >
+                  Apply
+                </button>
+              ) : null}
+              {rangeActive && onClearRange && !dateRangeLocked ? (
                 <button
                   type="button"
                   disabled={dayActionBusy}
@@ -441,15 +462,26 @@ export function EntriesPanel({
               required
               inputMode="numeric"
               placeholder="YYYY-MM-DD"
-              value={entryDate}
-              onChange={(e) => setEntryDate(e.target.value)}
+              value={
+                lockedEntryDate ? formatDisplayDate(lockedEntryDate) : entryDate
+              }
+              readOnly={Boolean(lockedEntryDate)}
+              onChange={(e) => {
+                if (lockedEntryDate) return;
+                setEntryDate(e.target.value);
+              }}
               onKeyDown={(e) => {
                 if (e.key !== "Enter") return;
                 e.preventDefault();
                 focusNextFromDate();
               }}
               className="rounded-md border px-3 py-2 text-sm"
-              style={{ borderColor: "var(--line)", color: "var(--ink)" }}
+              style={{
+                borderColor: "var(--line)",
+                color: "var(--ink)",
+                background: lockedEntryDate ? "var(--bg-deep)" : "#fff",
+              }}
+              title={lockedEntryDate ? "Accounts can only enter for today" : undefined}
             />
           </label>
           <label className="flex flex-col gap-1 text-xs" style={{ color: "var(--ink-muted)" }}>
@@ -518,6 +550,7 @@ export function EntriesPanel({
         <table className="min-w-full text-left text-sm">
           <thead style={{ background: "var(--bg-deep)", color: "var(--ink-muted)" }}>
             <tr>
+              <th className="px-3 py-2.5 font-medium whitespace-nowrap">Sl.no</th>
               <th className="px-3 py-2.5 font-medium">Date</th>
               <th className="px-3 py-2.5 font-medium">
                 {kind === "receipt" ? "Receipt #" : "Voucher #"}
@@ -538,7 +571,8 @@ export function EntriesPanel({
           <tbody>
             {showOpeningInTable ? (
               <tr className="border-t" style={{ borderColor: "var(--line)", background: "var(--bg-deep)" }}>
-                <td className="px-3 py-2.5 whitespace-nowrap">{bookDate}</td>
+                <td className="px-3 py-2.5 whitespace-nowrap tabular-nums">1</td>
+                <td className="px-3 py-2.5 whitespace-nowrap">{formatDisplayDate(bookDate)}</td>
                 <td className="px-3 py-2.5 font-medium whitespace-nowrap">
                   {openingNumber}
                 </td>
@@ -616,7 +650,7 @@ export function EntriesPanel({
             {filteredRows.length === 0 && !showOpeningInTable ? (
               <tr>
                 <td
-                  colSpan={showEditWindow ? 7 : 6}
+                  colSpan={showEditWindow ? 8 : 7}
                   className="px-3 py-8 text-center"
                   style={{ color: "var(--ink-muted)" }}
                 >
@@ -626,7 +660,8 @@ export function EntriesPanel({
                 </td>
               </tr>
             ) : null}
-            {filteredRows.map((row) => {
+            {filteredRows.map((row, index) => {
+                const slNo = (showOpeningInTable ? 1 : 0) + index + 1;
                 const editable = canEditRow(row, dayOpen, now, alwaysEditable);
                 const left = remainingEditMs(row.editable_until, now);
                 const canUnlock = Boolean(
@@ -659,7 +694,8 @@ export function EntriesPanel({
 
                 return (
                   <tr key={row.id} className="border-t" style={{ borderColor: "var(--line)" }}>
-                    <td className="px-3 py-2.5 whitespace-nowrap">{row.entry_date}</td>
+                    <td className="px-3 py-2.5 whitespace-nowrap tabular-nums">{slNo}</td>
+                    <td className="px-3 py-2.5 whitespace-nowrap">{formatDisplayDate(row.entry_date)}</td>
                     <td className="px-3 py-2.5 font-medium whitespace-nowrap">{row.number}</td>
                     <td className="px-3 py-2.5">{row.description}</td>
                     <td className="px-3 py-2.5 text-right whitespace-nowrap">

@@ -2,7 +2,7 @@ import { redirect } from "next/navigation";
 import { CashBookApp } from "@/components/cash-book-app";
 import { todayBookDate } from "@/lib/dates";
 import { createClient } from "@/lib/supabase/server";
-import type { AuditLog, CashBookDay, Profile, Receipt, Voucher } from "@/lib/types";
+import type { Advance, AuditLog, CashBookDay, Profile, Receipt, Voucher } from "@/lib/types";
 
 type SearchParams = Promise<{ date?: string }>;
 
@@ -36,8 +36,9 @@ export default async function HomePage({
     );
   }
 
-  const params = await searchParams;
-  const bookDate = params.date || todayBookDate();
+  // Always open on the current cash-book day; Boss can still change dates in-app.
+  await searchParams;
+  const bookDate = todayBookDate();
 
   const { data: day, error: dayError } = await supabase.rpc("ensure_cash_book_day", {
     p_date: bookDate,
@@ -64,23 +65,29 @@ export default async function HomePage({
 
   const dayRow = (closed as CashBookDay | null) ?? (day as CashBookDay);
 
-  const [{ data: receipts }, { data: vouchers }, { data: logs }] = await Promise.all([
-    supabase
-      .from("receipts")
-      .select("*")
-      .eq("book_date", bookDate)
-      .order("created_at", { ascending: true }),
-    supabase
-      .from("vouchers")
-      .select("*")
-      .eq("book_date", bookDate)
-      .order("created_at", { ascending: true }),
-    supabase
-      .from("audit_logs")
-      .select("*")
-      .eq("book_date", bookDate)
-      .order("created_at", { ascending: false }),
-  ]);
+  const [{ data: receipts }, { data: vouchers }, { data: advances }, { data: logs }] =
+    await Promise.all([
+      supabase
+        .from("receipts")
+        .select("*")
+        .eq("book_date", bookDate)
+        .order("created_at", { ascending: true }),
+      supabase
+        .from("vouchers")
+        .select("*")
+        .eq("book_date", bookDate)
+        .order("created_at", { ascending: true }),
+      supabase
+        .from("advances")
+        .select("*")
+        .or(`book_date.eq.${bookDate},repaid_date.eq.${bookDate}`)
+        .order("sl_no", { ascending: true }),
+      supabase
+        .from("audit_logs")
+        .select("*")
+        .eq("book_date", bookDate)
+        .order("created_at", { ascending: false }),
+    ]);
 
   return (
     <CashBookApp
@@ -89,6 +96,7 @@ export default async function HomePage({
       initialDay={dayRow}
       initialReceipts={(receipts as Receipt[]) ?? []}
       initialVouchers={(vouchers as Voucher[]) ?? []}
+      initialAdvances={(advances as Advance[]) ?? []}
       initialLogs={(logs as AuditLog[]) ?? []}
     />
   );

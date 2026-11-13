@@ -5,6 +5,13 @@ export function getCashbookTimezone() {
   return TIMEZONE;
 }
 
+/** Display a YYYY-MM-DD book date as DD-MM-YYYY. */
+export function formatDisplayDate(date: string): string {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(date.trim());
+  if (!m) return date;
+  return `${m[3]}-${m[2]}-${m[1]}`;
+}
+
 /** Calendar date YYYY-MM-DD in cash book timezone */
 export function todayBookDate(now = new Date()): string {
   return new Intl.DateTimeFormat("en-CA", {
