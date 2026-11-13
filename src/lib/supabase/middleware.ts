@@ -28,8 +28,10 @@ export async function updateSession(request: NextRequest) {
 
   const path = request.nextUrl.pathname;
   const isLogin = path.startsWith("/login");
+  const isApi = path.startsWith("/api");
 
-  if (!user && !isLogin) {
+  // Never redirect API routes — /api/auth/login must stay reachable while signed out.
+  if (!user && !isLogin && !isApi) {
     const url = request.nextUrl.clone();
     url.pathname = "/login";
     return NextResponse.redirect(url);
