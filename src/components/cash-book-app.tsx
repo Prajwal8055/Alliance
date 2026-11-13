@@ -525,6 +525,7 @@ export function CashBookApp({
             showApprove={!rangeActive && isBoss && day.status !== "approved"}
             showUnlock={!rangeActive && isBoss && day.status === "approved"}
             showEditWindow
+            alwaysEditable={isBoss && !rangeActive}
             canUnlockEntry={isBoss && !rangeActive}
             dayActionBusy={busy}
             onApproveDay={approve}
@@ -613,6 +614,7 @@ export function CashBookApp({
             showApprove={!rangeActive && isBoss && day.status !== "approved"}
             showUnlock={!rangeActive && isBoss && day.status === "approved"}
             showEditWindow
+            alwaysEditable={isBoss && !rangeActive}
             canUnlockEntry={isBoss && !rangeActive}
             dayActionBusy={busy}
             onApproveDay={approve}

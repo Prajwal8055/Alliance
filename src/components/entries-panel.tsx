@@ -31,6 +31,8 @@ type Props = {
   showApprove?: boolean;
   showUnlock?: boolean;
   showEditWindow?: boolean;
+  /** Boss: edit/add/delete without the 10-minute window or day-open gate. */
+  alwaysEditable?: boolean;
   canUnlockEntry?: boolean;
   dayActionBusy?: boolean;
   onApproveDay?: () => void;
@@ -52,7 +54,13 @@ type Props = {
   onDelete: (id: string) => Promise<void>;
 };
 
-function canEditRow(row: EntryRow, dayOpen: boolean, now: number) {
+function canEditRow(
+  row: EntryRow,
+  dayOpen: boolean,
+  now: number,
+  alwaysEditable: boolean,
+) {
+  if (alwaysEditable) return true;
   return dayOpen && remainingEditMs(row.editable_until, now) > 0;
 }
 
@@ -119,6 +127,7 @@ export function EntriesPanel({
   showApprove,
   showUnlock,
   showEditWindow = false,
+  alwaysEditable = false,
   canUnlockEntry = false,
   dayActionBusy,
   onApproveDay,
@@ -224,7 +233,7 @@ export function EntriesPanel({
     return includeOpening ? openingAmount + entries : entries;
   }, [filteredRows, showOpeningBalance, openingAmount, searchQuery]);
 
-  const canCreate = dayOpen && dayStatus === "open";
+  const canCreate = alwaysEditable || (dayOpen && dayStatus === "open");
   const showOpeningInTable = showOpeningBalance && !searchQuery.trim();
 
   function focusNextFromDate() {
@@ -318,7 +327,10 @@ export function EntriesPanel({
             {title}
           </h2>
           <p className="text-sm" style={{ color: "var(--ink-muted)" }}>
-            Numbers auto-generate and never repeat. Edit window: 10 minutes after create.
+            Numbers auto-generate and never repeat.
+            {alwaysEditable
+              ? " Boss can edit anytime."
+              : " Edit window: 10 minutes after create."}{" "}
             Press Enter to move to the next field; Enter on Amount adds the entry.
           </p>
         </div>
@@ -615,9 +627,11 @@ export function EntriesPanel({
               </tr>
             ) : null}
             {filteredRows.map((row) => {
-                const editable = canEditRow(row, dayOpen, now);
+                const editable = canEditRow(row, dayOpen, now, alwaysEditable);
                 const left = remainingEditMs(row.editable_until, now);
-                const canUnlock = Boolean(canUnlockEntry && onUnlockEntry);
+                const canUnlock = Boolean(
+                  !alwaysEditable && canUnlockEntry && onUnlockEntry,
+                );
 
                 async function unlockRow(): Promise<boolean> {
                   if (!onUnlockEntry) return false;
@@ -656,7 +670,11 @@ export function EntriesPanel({
                     </td>
                     {showEditWindow ? (
                       <td className="w-0 px-2 py-2.5 text-center whitespace-nowrap">
-                        {editable ? (
+                        {alwaysEditable ? (
+                          <span className="text-xs" style={{ color: "var(--ink-muted)" }}>
+                            —
+                          </span>
+                        ) : editable ? (
                           <span className="text-xs tabular-nums" style={{ color: "var(--warn)" }}>
                             {formatCountdown(left)}
                           </span>
