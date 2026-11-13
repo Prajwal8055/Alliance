@@ -46,19 +46,21 @@ export async function PATCH(request: Request, { params }: Params) {
       return NextResponse.json({ error: "User not found" }, { status: 404 });
     }
 
-    if (profile.role !== "accounts") {
+    if (profile.role !== "accounts" && profile.role !== "hr") {
       return NextResponse.json(
-        { error: "Only Accounts users can be edited here" },
+        { error: "Only Accounts or HR users can be edited here" },
         { status: 403 },
       );
     }
+
+    const role = profile.role as "accounts" | "hr";
 
     if (email) {
       const { error: authError } = await admin.auth.admin.updateUserById(id, {
         email,
         email_confirm: true,
         ...(fullName
-          ? { user_metadata: { full_name: fullName, role: "accounts" } }
+          ? { user_metadata: { full_name: fullName, role } }
           : {}),
       });
       if (authError) {
@@ -69,7 +71,7 @@ export async function PATCH(request: Request, { params }: Params) {
       }
     } else if (fullName) {
       const { error: metaError } = await admin.auth.admin.updateUserById(id, {
-        user_metadata: { full_name: fullName, role: "accounts" },
+        user_metadata: { full_name: fullName, role },
       });
       if (metaError) {
         return NextResponse.json({ error: metaError.message }, { status: 400 });
@@ -92,7 +94,7 @@ export async function PATCH(request: Request, { params }: Params) {
         id,
         full_name: fullName ?? profile.full_name,
         email: email ?? undefined,
-        role: "accounts" as const,
+        role,
       },
     });
   } catch (err) {
@@ -131,33 +133,34 @@ export async function DELETE(_request: Request, { params }: Params) {
       return NextResponse.json({ error: "User not found" }, { status: 404 });
     }
 
-    if (profile.role !== "accounts") {
+    if (profile.role !== "accounts" && profile.role !== "hr") {
       return NextResponse.json(
-        { error: "Only Accounts users can be removed" },
+        { error: "Only Accounts or HR users can be removed" },
         { status: 403 },
       );
     }
 
     const bossId = gate.profile.id;
 
-    // Reassign ledger rows with the Boss session (is_boss), then hard-delete auth+profile.
-    const supabase = await createClient();
-    const { error: reassignError } = await supabase.rpc(
-      "reassign_accounts_user_entries",
-      { p_from: id, p_to: bossId },
-    );
-
-    if (reassignError) {
-      // Admin fallback if RPC must run without a Boss JWT (e.g. service role).
-      const { error: adminReassignError } = await admin.rpc(
+    // Reassign ledger rows for Accounts users, then hard-delete auth+profile.
+    if (profile.role === "accounts") {
+      const supabase = await createClient();
+      const { error: reassignError } = await supabase.rpc(
         "reassign_accounts_user_entries",
         { p_from: id, p_to: bossId },
       );
-      if (adminReassignError) {
-        return NextResponse.json(
-          { error: adminReassignError.message || reassignError.message },
-          { status: 500 },
+
+      if (reassignError) {
+        const { error: adminReassignError } = await admin.rpc(
+          "reassign_accounts_user_entries",
+          { p_from: id, p_to: bossId },
         );
+        if (adminReassignError) {
+          return NextResponse.json(
+            { error: adminReassignError.message || reassignError.message },
+            { status: 500 },
+          );
+        }
       }
     }
 

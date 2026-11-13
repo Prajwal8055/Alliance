@@ -54,6 +54,7 @@ export async function POST(request: Request) {
     email?: string;
     password?: string;
     full_name?: string;
+    role?: string;
   };
   try {
     body = await request.json();
@@ -63,7 +64,9 @@ export async function POST(request: Request) {
 
   const email = body.email?.trim().toLowerCase();
   const password = (body.password ?? "").trim();
-  const fullName = body.full_name?.trim() || "Accounts";
+  const role = body.role === "hr" ? "hr" : "accounts";
+  const fullName =
+    body.full_name?.trim() || (role === "hr" ? "HR" : "Accounts");
 
   if (!email || !password) {
     return NextResponse.json(
@@ -89,7 +92,7 @@ export async function POST(request: Request) {
       email_confirm: true,
       user_metadata: {
         full_name: fullName,
-        role: "accounts",
+        role,
       },
     });
 
@@ -107,7 +110,7 @@ export async function POST(request: Request) {
     const { error: profileError } = await admin.from("profiles").upsert({
       id: data.user.id,
       full_name: fullName,
-      role: "accounts",
+      role,
     });
     if (profileError) {
       return NextResponse.json(
@@ -123,7 +126,7 @@ export async function POST(request: Request) {
         id: data.user.id,
         email,
         full_name: fullName,
-        role: "accounts",
+        role,
       },
     });
   } catch (err) {

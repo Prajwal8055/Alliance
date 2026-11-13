@@ -5,7 +5,12 @@ import { formatDisplayDate, formatMoney } from "@/lib/dates";
 import type { Advance, AdvanceStatus } from "@/lib/types";
 
 type Props = {
+  title: string;
   rows: Advance[];
+  /** Names already used for an active advance of this kind (cannot repeat here). */
+  blockedNames?: string[];
+  /** Suggested names (e.g. from the other advance type). */
+  knownNames?: string[];
   bookDate: string;
   canCreate: boolean;
   isBoss: boolean;
@@ -29,7 +34,10 @@ function statusColor(status: AdvanceStatus) {
 }
 
 export function AdvancesPanel({
+  title,
   rows,
+  blockedNames = [],
+  knownNames = [],
   bookDate,
   canCreate,
   isBoss,
@@ -39,11 +47,22 @@ export function AdvancesPanel({
   onRepay,
   onDelete,
 }: Props) {
+  const nameListId = `${title.replace(/\s+/g, "-").toLowerCase()}-names`;
   const [personName, setPersonName] = useState("");
   const [amount, setAmount] = useState("");
   const [formOpen, setFormOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+
+  const blockedKeys = useMemo(
+    () => new Set(blockedNames.map((n) => n.trim().toLowerCase()).filter(Boolean)),
+    [blockedNames],
+  );
+  const suggestionNames = useMemo(
+    () =>
+      knownNames.filter((n) => !blockedKeys.has(n.trim().toLowerCase())),
+    [knownNames, blockedKeys],
+  );
 
   const totalOut = useMemo(
     () =>
@@ -65,6 +84,10 @@ export function AdvancesPanel({
       setError("Name is required");
       return;
     }
+    if (blockedKeys.has(name.toLowerCase())) {
+      setError(`“${name}” already has an active ${title.toLowerCase()}. Name cannot repeat here.`);
+      return;
+    }
     const n = Number(amount);
     if (!Number.isFinite(n) || n <= 0) {
       setError("Enter a valid advance amount");
@@ -79,8 +102,8 @@ export function AdvancesPanel({
       setFormOpen(false);
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Failed to save";
-      if (/advances_active_person_unique|duplicate key/i.test(msg)) {
-        setError("This person already has an active advance. Name cannot repeat.");
+      if (/advances_active_person|duplicate key/i.test(msg)) {
+        setError(`“${name}” already has an active ${title.toLowerCase()}. Name cannot repeat here.`);
       } else {
         setError(msg);
       }
@@ -91,25 +114,21 @@ export function AdvancesPanel({
 
   return (
     <section style={{ fontFamily: "var(--font-body)" }}>
-      <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
-        <div>
+      <div className="mb-4 flex items-start justify-between gap-3">
+        <div className="min-w-0 flex-1">
           <h2 className="text-2xl font-semibold" style={{ fontFamily: "var(--font-display)" }}>
-            Advance
+            {title}
           </h2>
-          <p className="text-sm" style={{ color: "var(--ink-muted)" }}>
-            Sl.no is automatic. Each person name can have only one active advance. Boss must approve
-            each advance — approved amounts leave cash; repay adds them back.
-          </p>
         </div>
         {canCreate && !formOpen ? (
           <button
             type="button"
-            aria-label="Add advance"
+            aria-label={`Add ${title}`}
             onClick={() => {
               setFormOpen(true);
               setError(null);
             }}
-            className="inline-flex h-11 w-11 items-center justify-center rounded-full text-2xl font-semibold leading-none text-white"
+            className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-2xl font-semibold leading-none text-white"
             style={{ background: "var(--accent)" }}
           >
             +
@@ -127,6 +146,7 @@ export function AdvancesPanel({
             Name of the person
             <input
               required
+              list={nameListId}
               value={personName}
               onChange={(e) => setPersonName(e.target.value)}
               className="rounded-md border px-3 py-2 text-sm"
@@ -134,6 +154,11 @@ export function AdvancesPanel({
               placeholder="Person name"
               autoFocus
             />
+            <datalist id={nameListId}>
+              {suggestionNames.map((name) => (
+                <option key={name} value={name} />
+              ))}
+            </datalist>
           </label>
           <label className="flex flex-col gap-1 text-xs" style={{ color: "var(--ink-muted)" }}>
             Advance amount
@@ -196,19 +221,27 @@ export function AdvancesPanel({
             {rows.length === 0 ? (
               <tr>
                 <td colSpan={6} className="px-3 py-8 text-center" style={{ color: "var(--ink-muted)" }}>
-                  No advances yet.
+                  No {title.toLowerCase()} entries yet.
                 </td>
               </tr>
             ) : null}
-            {rows.map((row) => (
+            {rows.map((row, index) => (
               <tr key={row.id} className="border-t" style={{ borderColor: "var(--line)" }}>
-                <td className="px-3 py-2.5 whitespace-nowrap tabular-nums">{row.sl_no}</td>
+                <td className="px-3 py-2.5 whitespace-nowrap tabular-nums">{index + 1}</td>
                 <td className="px-3 py-2.5 whitespace-nowrap">
                   {formatDisplayDate(row.entry_date)}
                 </td>
                 <td className="px-3 py-2.5 font-medium">{row.person_name}</td>
                 <td className="px-3 py-2.5 text-right whitespace-nowrap">
                   {formatMoney(row.amount)}
+                  {row.status === "approved" && Number(row.repaid_amount ?? 0) > 0 ? (
+                    <span className="mt-0.5 block text-xs" style={{ color: "var(--ink-muted)" }}>
+                      Due{" "}
+                      {formatMoney(
+                        Math.max(0, Number(row.amount) - Number(row.repaid_amount ?? 0)),
+                      )}
+                    </span>
+                  ) : null}
                 </td>
                 <td className="px-3 py-2.5 whitespace-nowrap">
                   <span

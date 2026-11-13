@@ -6,7 +6,7 @@ type ManagedUser = {
   id: string;
   email: string;
   full_name: string;
-  role: "boss" | "accounts";
+  role: "boss" | "accounts" | "hr";
   created_at: string;
 };
 
@@ -68,6 +68,7 @@ export function UsersPanel() {
   const [email, setEmail] = useState("");
   const [fullName, setFullName] = useState("");
   const [password, setPassword] = useState("");
+  const [createRole, setCreateRole] = useState<"accounts" | "hr">("accounts");
   const [showPassword, setShowPassword] = useState(true);
 
   const [manageFor, setManageFor] = useState<ManagedUser | null>(null);
@@ -119,7 +120,8 @@ export function UsersPanel() {
     try {
       const nextEmail = email.trim().toLowerCase();
       const nextPassword = password.trim();
-      const nextName = fullName.trim() || "Accounts";
+      const nextName =
+        fullName.trim() || (createRole === "hr" ? "HR" : "Accounts");
 
       if (!nextEmail) throw new Error("Email is required");
       if (!nextEmail.includes("@")) throw new Error("Enter a valid email address");
@@ -134,6 +136,7 @@ export function UsersPanel() {
           email: nextEmail,
           password: nextPassword,
           full_name: nextName,
+          role: createRole,
         }),
       });
       if (!res.ok) throw new Error(await readApiError(res));
@@ -143,7 +146,7 @@ export function UsersPanel() {
       setFullName("");
       setPassword("");
       setMessage(
-        `Created ${json.user?.email ?? nextEmail}. Add more Accounts users anytime.`,
+        `Created ${createRole === "hr" ? "HR" : "Accounts"} user ${json.user?.email ?? nextEmail}.`,
       );
       await load();
     } catch (err) {
@@ -155,7 +158,7 @@ export function UsersPanel() {
 
   async function saveDetails(e: React.FormEvent) {
     e.preventDefault();
-    if (!manageFor || manageFor.role !== "accounts") return;
+    if (!manageFor || (manageFor.role !== "accounts" && manageFor.role !== "hr")) return;
     setBusy(true);
     setError(null);
     setMessage(null);
@@ -184,7 +187,7 @@ export function UsersPanel() {
 
   async function resetPassword(e: React.FormEvent) {
     e.preventDefault();
-    if (!manageFor || manageFor.role !== "accounts") return;
+    if (!manageFor || (manageFor.role !== "accounts" && manageFor.role !== "hr")) return;
     setBusy(true);
     setError(null);
     setMessage(null);
@@ -209,7 +212,7 @@ export function UsersPanel() {
   }
 
   async function removeUser() {
-    if (!manageFor || manageFor.role !== "accounts") return;
+    if (!manageFor || (manageFor.role !== "accounts" && manageFor.role !== "hr")) return;
     if (
       !confirm(
         `Remove ${manageFor.email}? They will no longer be able to sign in. Existing cash book entries stay in the log.`,
@@ -242,6 +245,7 @@ export function UsersPanel() {
   }
 
   const accountsCount = users.filter((u) => u.role === "accounts").length;
+  const hrCount = users.filter((u) => u.role === "hr").length;
 
   return (
     <section style={{ fontFamily: "var(--font-body)" }}>
@@ -249,11 +253,11 @@ export function UsersPanel() {
         Manage users
       </h2>
       <p className="mt-1 text-sm" style={{ color: "var(--ink-muted)" }}>
-        Boss can add, edit, reset passwords for, and remove Accounts users. There is no
-        limit on how many Accounts users you can have.
+        Boss can add Accounts (cash book) and HR (advances) users, edit them, reset passwords, and
+        remove them.
       </p>
       <p className="mt-1 text-sm" style={{ color: "var(--ink-muted)" }}>
-        {accountsCount} Accounts user{accountsCount === 1 ? "" : "s"}
+        {accountsCount} Accounts · {hrCount} HR
       </p>
 
       <form
@@ -262,7 +266,19 @@ export function UsersPanel() {
         style={{ borderColor: "var(--line)", background: "#fff" }}
         noValidate
       >
-        <h3 className="md:col-span-2 text-sm font-semibold">Add Accounts user</h3>
+        <h3 className="md:col-span-2 text-sm font-semibold">Add user</h3>
+        <label className="flex flex-col gap-1 text-xs" style={{ color: "var(--ink-muted)" }}>
+          Role
+          <select
+            value={createRole}
+            onChange={(e) => setCreateRole(e.target.value === "hr" ? "hr" : "accounts")}
+            className="rounded-md border px-3 py-2 text-sm"
+            style={{ borderColor: "var(--line)", color: "var(--ink)", background: "#fff" }}
+          >
+            <option value="accounts">Accounts</option>
+            <option value="hr">HR</option>
+          </select>
+        </label>
         <label className="flex flex-col gap-1 text-xs" style={{ color: "var(--ink-muted)" }}>
           Full name
           <input
@@ -270,7 +286,7 @@ export function UsersPanel() {
             onChange={(e) => setFullName(e.target.value)}
             className="rounded-md border px-3 py-2 text-sm"
             style={{ borderColor: "var(--line)", color: "var(--ink)" }}
-            placeholder="Accounts clerk"
+            placeholder={createRole === "hr" ? "HR" : "Accounts clerk"}
             autoComplete="off"
           />
         </label>
@@ -383,7 +399,7 @@ export function UsersPanel() {
                   <td className="px-3 py-2.5">{u.email || "—"}</td>
                   <td className="px-3 py-2.5 capitalize">{u.role}</td>
                   <td className="px-3 py-2.5">
-                    {u.role === "accounts" ? (
+                    {u.role === "accounts" || u.role === "hr" ? (
                       <button
                         type="button"
                         className="text-sm font-semibold underline"
@@ -403,7 +419,7 @@ export function UsersPanel() {
         </table>
       </div>
 
-      {manageFor && manageFor.role === "accounts" ? (
+      {manageFor && (manageFor.role === "accounts" || manageFor.role === "hr") ? (
         <div
           className="mt-4 grid gap-4 rounded-xl border p-4"
           style={{ borderColor: "var(--line)", background: "#fff" }}
@@ -412,7 +428,8 @@ export function UsersPanel() {
             <div>
               <h3 className="text-sm font-semibold">Manage {manageFor.email}</h3>
               <p className="mt-0.5 text-xs" style={{ color: "var(--ink-muted)" }}>
-                Edit details, reset password, or remove this Accounts user.
+                Edit details, reset password, or remove this{" "}
+                {manageFor.role === "hr" ? "HR" : "Accounts"} user.
               </p>
             </div>
             <button

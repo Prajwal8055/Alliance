@@ -37,7 +37,8 @@ export function ProfilePanel({ profile, onProfileUpdated, onDataWiped }: Props) 
   const completedRef = useRef(false);
 
   const displayName = fullName.trim() || profile.full_name?.trim() || "Your account";
-  const roleLabel = profile.role === "boss" ? "Boss" : "Accounts";
+  const roleLabel =
+    profile.role === "boss" ? "Boss" : profile.role === "hr" ? "HR" : "Accounts";
   const isBoss = profile.role === "boss";
 
   useEffect(() => {

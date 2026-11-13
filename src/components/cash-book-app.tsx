@@ -2,14 +2,14 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { AccountMenu } from "@/components/account-menu";
+import { AccountMenu, type AppNotification } from "@/components/account-menu";
 import { ActivityLog } from "@/components/activity-log";
 import { AdvancesPanel } from "@/components/advances-panel";
 import { ApprovalModal } from "@/components/approval-modal";
 import { EntriesPanel } from "@/components/entries-panel";
 import { NoticeModal } from "@/components/notice-modal";
 import { ProfilePanel } from "@/components/profile-panel";
-import { StatusBadge } from "@/components/status-badge";
+import { StatementPanel } from "@/components/statement-panel";
 import { UsersPanel } from "@/components/users-panel";
 import {
   formatDisplayDate,
@@ -27,7 +27,14 @@ import type {
   Voucher,
 } from "@/lib/types";
 
-type Tab = "receipts" | "vouchers" | "advances" | "activity" | "users" | "profile";
+type Tab =
+  | "statement"
+  | "receipts"
+  | "vouchers"
+  | "advances"
+  | "activity"
+  | "users"
+  | "profile";
 
 type Props = {
   initialDate: string;
@@ -51,6 +58,9 @@ function approvedNoticeKey(date: string) {
   return `cashbook-approved-notice-${date}`;
 }
 
+/** Earliest date Advances From/To may search (01-10-2026). */
+const ADVANCE_SEARCH_MIN = "2026-10-01";
+
 export function CashBookApp({
   initialDate,
   profile,
@@ -67,9 +77,21 @@ export function CashBookApp({
   const [receipts, setReceipts] = useState(initialReceipts);
   const [vouchers, setVouchers] = useState(initialVouchers);
   const [advances, setAdvances] = useState(initialAdvances);
+  /** Full Advances-tab browse list (From min … To); independent of day sheet. */
+  const [browseAdvances, setBrowseAdvances] = useState<Advance[]>(initialAdvances);
+  /** Longer lookback for Cash Flow weekly/monthly chart. */
+  const [chartReceipts, setChartReceipts] = useState<Receipt[]>(initialReceipts);
+  const [chartVouchers, setChartVouchers] = useState<Voucher[]>(initialVouchers);
+  const [chartAdvances, setChartAdvances] = useState<Advance[]>(initialAdvances);
+  const [activeAdvanceNames, setActiveAdvanceNames] = useState<
+    { kind: string; person_name: string }[]
+  >([]);
+  const [recoverableAdvances, setRecoverableAdvances] = useState<Advance[]>([]);
   const [logs, setLogs] = useState(initialLogs);
   const [currentProfile, setCurrentProfile] = useState(profile);
-  const [tab, setTab] = useState<Tab>("receipts");
+  const [tab, setTab] = useState<Tab>(() =>
+    profile.role === "boss" ? "statement" : profile.role === "hr" ? "advances" : "receipts",
+  );
   const [showApproval, setShowApproval] = useState(false);
   const [showLowBalance, setShowLowBalance] = useState(false);
   const [showApprovedNotice, setShowApprovedNotice] = useState(false);
@@ -81,11 +103,13 @@ export function CashBookApp({
   const [profileNames, setProfileNames] = useState<Record<string, string>>({});
 
   const isBoss = currentProfile.role === "boss";
+  const isHr = currentProfile.role === "hr";
+  const isAccounts = currentProfile.role === "accounts";
   const today = todayBookDate();
   const isToday = bookDate === today;
-  // Accounts may only add/edit on the current cash-book day.
+  // Accounts may only add/edit on the current cash-book day; Boss/HR can work any open day.
   const dayOpen =
-    day.status === "open" && !rangeActive && (isBoss || isToday);
+    day.status === "open" && !rangeActive && (isBoss || isHr || isToday);
   const timezone =
     process.env.NEXT_PUBLIC_CASHBOOK_TIMEZONE ?? "America/Los_Angeles";
 
@@ -107,9 +131,30 @@ export function CashBookApp({
     setProfileNames(map);
   }, [supabase]);
 
+  const loadActiveAdvanceNames = useCallback(async () => {
+    const [{ data: activeRows }, { data: approvedRows }] = await Promise.all([
+      supabase
+        .from("advances")
+        .select("kind, person_name")
+        .in("status", ["pending", "approved"]),
+      supabase.from("advances").select("*").eq("status", "approved"),
+    ]);
+    setActiveAdvanceNames(
+      ((activeRows as { kind: string; person_name: string }[]) ?? []).map((row) => ({
+        kind: row.kind || "salary",
+        person_name: row.person_name,
+      })),
+    );
+    setRecoverableAdvances((approvedRows as Advance[]) ?? []);
+  }, [supabase]);
+
   useEffect(() => {
     void loadProfiles();
   }, [loadProfiles]);
+
+  useEffect(() => {
+    void loadActiveAdvanceNames();
+  }, [loadActiveAdvanceNames, advances]);
 
   const loadDay = useCallback(
     async (date: string, closedDay?: CashBookDay | null) => {
@@ -286,13 +331,24 @@ export function CashBookApp({
 
   // Accounts: only today's sheet (no back/forward dates).
   useEffect(() => {
-    if (isBoss) return;
+    if (isBoss || isHr) return;
     if (bookDate === today && !rangeActive) return;
     void onDateChange(today);
-  }, [isBoss, today, bookDate, rangeActive]);
+  }, [isBoss, isHr, today, bookDate, rangeActive]);
+
+  // Boss uses combined statement; HR lands on Advances; Accounts never stays on Advances/statement.
+  useEffect(() => {
+    if (isBoss && (tab === "receipts" || tab === "vouchers")) {
+      setTab("statement");
+    } else if (isHr && (tab === "receipts" || tab === "vouchers" || tab === "statement")) {
+      setTab("advances");
+    } else if (isAccounts && (tab === "advances" || tab === "statement")) {
+      setTab("receipts");
+    }
+  }, [isHr, isAccounts, tab]);
 
   async function applyDateRange() {
-    if (!isBoss) {
+    if (!isBoss && !isHr) {
       await onDateChange(today);
       return;
     }
@@ -384,7 +440,7 @@ export function CashBookApp({
   async function placeOnSheet(entryDate: string) {
     const sheetDate = isBoss ? entryDate || bookDate : today;
     if (!isBoss && entryDate && entryDate !== today) {
-      throw new Error("Accounts can only enter entries for today");
+      throw new Error("Only Boss can enter entries for other dates");
     }
     const { error } = await supabase.rpc("ensure_cash_book_day", {
       p_date: sheetDate,
@@ -456,9 +512,108 @@ export function CashBookApp({
     })
     .reduce((s, a) => s + Number(a.amount), 0);
   const advanceRepaidToday = advances
-    .filter((a) => a.status === "repaid" && a.repaid_date === bookDate)
+    .filter(
+      (a) =>
+        a.status === "repaid" &&
+        a.repaid_date === bookDate &&
+        !a.repaid_via_receipt,
+    )
     .reduce((s, a) => s + Number(a.amount), 0);
   const advancesForPanel = advances.filter((a) => a.book_date === bookDate);
+  const advancesForTab = tab === "advances" ? browseAdvances : advancesForPanel;
+  const salaryAdvances = advancesForTab.filter(
+    (a) => (a.kind ?? "salary") === "salary",
+  );
+  const commissionAdvances = advancesForTab.filter(
+    (a) => a.kind === "commission",
+  );
+  const advanceKnownNames = useMemo(() => {
+    const names = new Set<string>();
+    for (const a of [...advances, ...browseAdvances]) {
+      const n = a.person_name?.trim();
+      if (n) names.add(n);
+    }
+    for (const a of activeAdvanceNames) {
+      const n = a.person_name?.trim();
+      if (n) names.add(n);
+    }
+    return Array.from(names).sort((a, b) => a.localeCompare(b));
+  }, [advances, browseAdvances, activeAdvanceNames]);
+
+  const loadBrowseAdvances = useCallback(
+    async (from: string, to: string) => {
+      const fromDate = from < ADVANCE_SEARCH_MIN ? ADVANCE_SEARCH_MIN : from;
+      const toDate = to < fromDate ? fromDate : to;
+      const { data, error } = await supabase
+        .from("advances")
+        .select("*")
+        .gte("book_date", fromDate)
+        .lte("book_date", toDate)
+        .order("book_date", { ascending: true })
+        .order("sl_no", { ascending: true });
+      if (error) throw error;
+      setBrowseAdvances((data as Advance[]) ?? []);
+    },
+    [supabase],
+  );
+
+  const loadChartHistory = useCallback(async () => {
+    const from = ADVANCE_SEARCH_MIN;
+    const to = todayBookDate();
+    const [{ data: r }, { data: v }, { data: a }] = await Promise.all([
+      supabase
+        .from("receipts")
+        .select("*")
+        .gte("book_date", from)
+        .lte("book_date", to)
+        .order("book_date", { ascending: true }),
+      supabase
+        .from("vouchers")
+        .select("*")
+        .gte("book_date", from)
+        .lte("book_date", to)
+        .order("book_date", { ascending: true }),
+      supabase
+        .from("advances")
+        .select("*")
+        .gte("book_date", from)
+        .lte("book_date", to)
+        .order("book_date", { ascending: true }),
+    ]);
+    setChartReceipts((r as Receipt[]) ?? []);
+    setChartVouchers((v as Voucher[]) ?? []);
+    setChartAdvances((a as Advance[]) ?? []);
+  }, [supabase]);
+
+  useEffect(() => {
+    if (!isBoss) return;
+    void loadChartHistory().catch(() => {
+      /* keep prior series */
+    });
+  }, [isBoss, loadChartHistory, bookDate, receipts, vouchers, advances]);
+
+  useEffect(() => {
+    if (tab === "advances") {
+      setRangeFrom(ADVANCE_SEARCH_MIN);
+      setRangeTo(today);
+      void loadBrowseAdvances(ADVANCE_SEARCH_MIN, today).catch(() => {
+        /* keep prior list */
+      });
+      return;
+    }
+    // Leaving Advances: restore day range so Cash Book filters stay on the sheet date.
+    if (!rangeActive) {
+      setRangeFrom(bookDate);
+      setRangeTo(bookDate);
+    }
+  }, [tab, loadBrowseAdvances, today, bookDate, rangeActive]);
+
+  function blockedNamesForKind(kind: "salary" | "commission") {
+    return activeAdvanceNames
+      .filter((a) => (a.kind || "salary") === kind)
+      .map((a) => a.person_name.trim())
+      .filter(Boolean);
+  }
   const closingBalance = rangeActive
     ? receiptTotal - voucherTotal - advanceOutTotal + advanceRepaidToday
     : Number(day.opening_balance ?? 0) +
@@ -509,7 +664,7 @@ export function CashBookApp({
       >
         <button
           type="button"
-          onClick={() => setTab("receipts")}
+          onClick={() => setTab(isBoss ? "statement" : "receipts")}
           className="mb-6 inline-flex w-fit items-center gap-2 rounded-full border px-3.5 py-2 text-sm font-semibold transition hover:bg-[var(--bg-deep)]"
           style={{
             borderColor: "var(--line)",
@@ -533,7 +688,7 @@ export function CashBookApp({
               }));
             }}
             onDataWiped={async () => {
-              setTab("receipts");
+              setTab(isBoss ? "statement" : "receipts");
               setBusy(true);
               setMessage(null);
               try {
@@ -575,64 +730,251 @@ export function CashBookApp({
     );
   }
 
+  const navTabs = (
+    [
+      ...(isBoss
+        ? ([["statement", "Cash Book"] as const] as const)
+        : !isHr
+          ? ([
+              ["receipts", "Receipts"] as const,
+              ["vouchers", "Cash voucher"] as const,
+            ] as const)
+          : []),
+      ...(isHr || isBoss ? ([["advances", "Advances"] as const] as const) : []),
+    ] as const
+  );
+
+  const pendingAdvances = useMemo(
+    () =>
+      (tab === "advances" ? browseAdvances : advances).filter((a) => a.status === "pending"),
+    [tab, browseAdvances, advances],
+  );
+
+  const notifications = useMemo((): AppNotification[] => {
+    const items: AppNotification[] = [];
+    if (day.status === "pending_approval" && isBoss) {
+      items.push({
+        id: "day-pending",
+        title: "Day awaiting approval",
+        body: `${formatDisplayDate(bookDate)} is ready for Boss approval.`,
+        tone: "warn",
+        onClick: () => setTab(isBoss ? "statement" : "receipts"),
+      });
+    }
+    if (day.status === "approved") {
+      items.push({
+        id: "day-locked",
+        title: "Sheet approved",
+        body: `${formatDisplayDate(bookDate)} is locked. Hold Unlock day to reopen.`,
+        tone: "info",
+        onClick: () => setTab(isBoss ? "statement" : "receipts"),
+      });
+    }
+    if (!rangeActive && closingBalance < 5000) {
+      items.push({
+        id: "low-cash",
+        title: "Low closing balance",
+        body: `Cash is ${formatMoney(closingBalance)} (below ₹5,000).`,
+        tone: "danger",
+        onClick: () => setTab(isBoss ? "statement" : "receipts"),
+      });
+    }
+    if ((isBoss || isHr) && pendingAdvances.length > 0) {
+      items.push({
+        id: "adv-pending",
+        title: `${pendingAdvances.length} advance${pendingAdvances.length === 1 ? "" : "s"} pending`,
+        body: "Open Advances to review and approve.",
+        tone: "warn",
+        onClick: () => setTab("advances"),
+      });
+    }
+    return items;
+  }, [
+    day.status,
+    bookDate,
+    rangeActive,
+    closingBalance,
+    pendingAdvances.length,
+    isBoss,
+    isHr,
+  ]);
+
   return (
-    <div className="mx-auto flex w-full max-w-6xl flex-1 flex-col px-4 py-8">
-      <header className="flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <h1 className="text-4xl font-semibold tracking-tight">Cash Book</h1>
-          <p className="mt-1 text-sm" style={{ color: "var(--ink-muted)", fontFamily: "var(--font-body)" }}>
-            {currentProfile.full_name?.trim() || (isBoss ? "Boss" : "Accounts")}
-          </p>
-        </div>
-        <div className="flex flex-wrap items-center gap-3" style={{ fontFamily: "var(--font-body)" }}>
-          <StatusBadge status={day.status} />
-          <AccountMenu
-            profile={currentProfile}
-            isBoss={isBoss}
-            onOpenProfile={() => setTab("profile")}
-            onOpenActivity={() => setTab("activity")}
-            onOpenUsers={() => setTab("users")}
-            onSignOut={signOut}
-          />
-        </div>
-      </header>
-
-      {message ? (
-        <p className="mt-4 text-sm" style={{ color: "var(--danger)", fontFamily: "var(--font-body)" }}>
-          {message}
-        </p>
-      ) : null}
-
-      <div className="mt-6 flex flex-wrap gap-2" style={{ fontFamily: "var(--font-body)" }}>
-        {(
-          [
-            ["receipts", "Receipts", "var(--accent)"] as const,
-            ["vouchers", "Cash voucher", "var(--danger)"] as const,
-            ["advances", "Advance", "var(--warn)"] as const,
-          ]
-        ).map(([id, label, activeColor]) => (
-          <button
-            key={id}
-            type="button"
-            onClick={() => setTab(id)}
-            className="rounded-full px-4 py-2 text-sm font-semibold transition"
-            style={{
-              background: tab === id ? activeColor : "var(--panel)",
-              color: tab === id ? "#fff" : "var(--ink)",
-              border: `1px solid ${tab === id ? activeColor : "var(--line)"}`,
-            }}
-          >
-            {label}
-          </button>
-        ))}
+    <div className="flex w-full flex-1 flex-col">
+      <div
+        className="flex h-16 items-center justify-end gap-3 border-b px-4 sm:px-6"
+        style={{ borderColor: "var(--line)", background: "var(--panel)" }}
+      >
+        <AccountMenu
+          profile={currentProfile}
+          isBoss={isBoss}
+          notifications={notifications}
+          onOpenProfile={() => setTab("profile")}
+          onOpenActivity={() => setTab("activity")}
+          onOpenUsers={() => setTab("users")}
+          onSignOut={signOut}
+        />
       </div>
 
-      {rangeActive ? (
-        <p className="mt-3 text-sm" style={{ color: "var(--ink-muted)", fontFamily: "var(--font-body)" }}>
-          Showing {rangeFrom} to {rangeTo} (view only). Set From and To to the same day (or Clear) to edit.
-        </p>
+      <div className="mx-auto flex w-full max-w-[1400px] flex-1 flex-col px-4 py-6 sm:px-6">
+        <header className="flex flex-wrap items-end justify-between gap-4">
+          <div>
+            <h1 className="text-[30px] font-bold tracking-tight" style={{ color: "var(--ink)" }}>
+              Cash Book
+            </h1>
+            <p className="mt-1 text-[13px]" style={{ color: "var(--ink-muted)" }}>
+              Receipts and vouchers together like a bank statement.
+            </p>
+          </div>
+          {navTabs.length > 0 ? (
+            <div
+              className="inline-flex rounded-xl border p-1"
+              style={{ borderColor: "var(--line)", background: "var(--bg-deep)" }}
+            >
+              {navTabs.map(([id, label]) => (
+                <button
+                  key={id}
+                  type="button"
+                  onClick={() => setTab(id)}
+                  className="rounded-lg px-4 py-2 text-sm font-semibold transition"
+                  style={{
+                    background: tab === id ? "var(--accent)" : "transparent",
+                    color: tab === id ? "#fff" : "var(--ink)",
+                  }}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          ) : null}
+        </header>
+
+        {message ? (
+          <p className="mt-4 text-sm" style={{ color: "var(--danger)" }}>
+            {message}
+          </p>
+        ) : null}
+
+        {rangeActive ? (
+          <p className="mt-3 text-sm" style={{ color: "var(--ink-muted)" }}>
+            Showing {rangeFrom} to {rangeTo} (view only). Set From and To to the same day (or Clear) to
+            edit.
+          </p>
+        ) : null}
+
+        {tab === "statement" && isBoss ? (
+          <div className="mt-5">
+            <StatementPanel
+            bookDate={bookDate}
+            dayStatus={day.status}
+            openingBalance={Number(day.opening_balance ?? 0)}
+            receipts={receipts}
+            vouchers={vouchers}
+            advances={rangeActive ? advances : advancesForPanel}
+            chartReceipts={rangeActive ? receipts : chartReceipts}
+            chartVouchers={rangeActive ? vouchers : chartVouchers}
+            chartAdvances={rangeActive ? advances : chartAdvances}
+            rangeFrom={rangeFrom}
+            rangeTo={rangeTo}
+            rangeActive={rangeActive}
+            dayActionBusy={busy}
+            showApprove={!rangeActive && day.status !== "approved"}
+            showUnlock={!rangeActive && day.status === "approved"}
+            canExport={isBoss}
+            canChangeEntryDate={isBoss}
+            onApproveDay={approve}
+            onUnlockDay={unlock}
+            onRangeFromChange={(date) => {
+              setRangeFrom(date);
+              setRangeTo(date);
+            }}
+            onRangeToChange={(date) => {
+              setRangeTo(date < rangeFrom ? rangeFrom : date);
+            }}
+            onApplyRange={() => void applyDateRange()}
+            onClearRange={() => void clearDateRange()}
+            onUpdateOpeningBalance={async (amount) => {
+              const { error } = await supabase
+                .from("cash_book_days")
+                .update({ opening_balance: amount })
+                .eq("book_date", bookDate);
+              if (error) throw error;
+              await supabase.rpc("recompute_opening_balances_from", { p_from: bookDate });
+              await refresh(bookDate);
+            }}
+            onAddReceipt={async (input) => {
+              const sheetDate = await placeOnSheet(input.entry_date || bookDate);
+              const { error } = await supabase.from("receipts").insert({
+                book_date: sheetDate,
+                entry_date: sheetDate,
+                description: input.description,
+                remarks: input.remarks,
+                amount: input.amount,
+                created_by: currentProfile.id,
+              });
+              if (error) throw error;
+              await afterEntrySaved(sheetDate);
+            }}
+            onAddVoucher={async (input) => {
+              const sheetDate = await placeOnSheet(input.entry_date || bookDate);
+              const { error } = await supabase.from("vouchers").insert({
+                book_date: sheetDate,
+                entry_date: sheetDate,
+                description: input.description,
+                remarks: input.remarks,
+                amount: input.amount,
+                created_by: currentProfile.id,
+              });
+              if (error) throw error;
+              await afterEntrySaved(sheetDate);
+            }}
+            onUpdateReceipt={async (id, input) => {
+              const sheetDate = await placeOnSheet(input.entry_date || bookDate);
+              const { error } = await supabase
+                .from("receipts")
+                .update({
+                  description: input.description,
+                  remarks: input.remarks,
+                  amount: input.amount,
+                  entry_date: sheetDate,
+                  book_date: sheetDate,
+                })
+                .eq("id", id);
+              if (error) throw error;
+              await afterEntrySaved(sheetDate);
+            }}
+            onUpdateVoucher={async (id, input) => {
+              const sheetDate = await placeOnSheet(input.entry_date || bookDate);
+              const { error } = await supabase
+                .from("vouchers")
+                .update({
+                  description: input.description,
+                  remarks: input.remarks,
+                  amount: input.amount,
+                  entry_date: sheetDate,
+                  book_date: sheetDate,
+                })
+                .eq("id", id);
+              if (error) throw error;
+              await afterEntrySaved(sheetDate);
+            }}
+            onDeleteReceipt={async (id) => {
+              const { error } = await supabase.from("receipts").delete().eq("id", id);
+              if (error) throw error;
+              await supabase.rpc("recompute_opening_balances_from", { p_from: bookDate });
+              await refresh(bookDate);
+            }}
+            onDeleteVoucher={async (id) => {
+              const { error } = await supabase.from("vouchers").delete().eq("id", id);
+              if (error) throw error;
+              await supabase.rpc("recompute_opening_balances_from", { p_from: bookDate });
+              await refresh(bookDate);
+            }}
+          />
+        </div>
       ) : null}
 
+      {(tab === "receipts" || tab === "vouchers") ? (
       <div className="mt-6 rounded-2xl border p-5 shadow-[var(--shadow)]" style={{ borderColor: "var(--line)", background: "var(--panel)" }}>
         {tab === "receipts" ? (
           <EntriesPanel
@@ -651,10 +993,10 @@ export function CashBookApp({
             dayActionBusy={busy}
             onApproveDay={approve}
             onUnlockDay={unlock}
-            rangeFrom={isBoss ? rangeFrom : today}
-            rangeTo={isBoss ? rangeTo : today}
+            rangeFrom={isAccounts ? today : rangeFrom}
+            rangeTo={isAccounts ? today : rangeTo}
             rangeActive={rangeActive}
-            dateRangeLocked={!isBoss}
+            dateRangeLocked={isAccounts}
             lockedEntryDate={isBoss ? undefined : today}
             onRangeFromChange={(date) => {
               setRangeFrom(date);
@@ -665,6 +1007,7 @@ export function CashBookApp({
             }}
             onApplyRange={() => void applyDateRange()}
             onClearRange={() => void clearDateRange()}
+            recoverableAdvances={recoverableAdvances}
             onUpdateOpeningBalance={async (amount) => {
               const { error } = await supabase
                 .from("cash_book_days")
@@ -707,6 +1050,15 @@ export function CashBookApp({
                 created_by: currentProfile.id,
               });
               if (error) throw error;
+              if (input.advance_id) {
+                const { error: advError } = await supabase.rpc("apply_receipt_to_advance", {
+                  p_advance_id: input.advance_id,
+                  p_amount: input.amount,
+                  p_date: sheetDate,
+                });
+                if (advError) throw advError;
+                await loadActiveAdvanceNames();
+              }
               await afterEntrySaved(sheetDate);
             }}
             onUpdate={async (id, input) => {
@@ -747,10 +1099,10 @@ export function CashBookApp({
             dayActionBusy={busy}
             onApproveDay={approve}
             onUnlockDay={unlock}
-            rangeFrom={isBoss ? rangeFrom : today}
-            rangeTo={isBoss ? rangeTo : today}
+            rangeFrom={isAccounts ? today : rangeFrom}
+            rangeTo={isAccounts ? today : rangeTo}
             rangeActive={rangeActive}
-            dateRangeLocked={!isBoss}
+            dateRangeLocked={isAccounts}
             lockedEntryDate={isBoss ? undefined : today}
             onRangeFromChange={(date) => {
               setRangeFrom(date);
@@ -819,50 +1171,175 @@ export function CashBookApp({
           />
         ) : null}
 
-        {tab === "advances" ? (
-          <AdvancesPanel
-            rows={rangeActive ? advances : advancesForPanel}
-            bookDate={bookDate}
-            canCreate={dayOpen || (isBoss && !rangeActive)}
-            isBoss={isBoss}
-            busy={busy}
-            onAdd={async (input) => {
-              const sheetDate = await placeOnSheet(input.entry_date || bookDate);
-              const { error } = await supabase.from("advances").insert({
-                book_date: sheetDate,
-                entry_date: sheetDate,
-                person_name: input.person_name,
-                amount: input.amount,
-                created_by: currentProfile.id,
-                status: "pending",
-              });
-              if (error) throw error;
-              await afterEntrySaved(sheetDate);
-            }}
-            onApprove={async (id) => {
-              const { error } = await supabase.rpc("approve_advance", { p_id: id });
-              if (error) throw error;
-              await refresh(bookDate);
-            }}
-            onRepay={async (id) => {
-              const { error } = await supabase.rpc("repay_advance", {
-                p_id: id,
-                p_date: isBoss ? bookDate : today,
-              });
-              if (error) throw error;
-              await supabase.rpc("recompute_opening_balances_from", { p_from: bookDate });
-              await refresh(bookDate);
-            }}
-            onDelete={async (id) => {
-              const { error } = await supabase.from("advances").delete().eq("id", id);
-              if (error) throw error;
-              await supabase.rpc("recompute_opening_balances_from", { p_from: bookDate });
-              await refresh(bookDate);
-            }}
-          />
-        ) : null}
-
       </div>
+      ) : null}
+
+      {tab === "advances" ? (
+        <>
+          <div
+            className="mt-6 flex flex-wrap items-end gap-2 rounded-xl border px-3 py-2"
+            style={{ borderColor: "var(--line)", background: "var(--panel)" }}
+          >
+            <label className="flex flex-col gap-1 text-xs" style={{ color: "var(--ink-muted)" }}>
+              From
+              <input
+                type="date"
+                value={rangeFrom}
+                min={ADVANCE_SEARCH_MIN}
+                onChange={(e) => {
+                  const date =
+                    e.target.value < ADVANCE_SEARCH_MIN
+                      ? ADVANCE_SEARCH_MIN
+                      : e.target.value;
+                  setRangeFrom(date);
+                  setRangeTo(date < rangeTo ? rangeTo : date);
+                }}
+                className="rounded-md border px-3 py-2 text-sm"
+                style={{ borderColor: "var(--line)", background: "#fff", color: "var(--ink)" }}
+              />
+            </label>
+            <label className="flex flex-col gap-1 text-xs" style={{ color: "var(--ink-muted)" }}>
+              To
+              <input
+                type="date"
+                value={rangeTo}
+                min={rangeFrom < ADVANCE_SEARCH_MIN ? ADVANCE_SEARCH_MIN : rangeFrom}
+                onChange={(e) => {
+                  const date = e.target.value;
+                  setRangeTo(date < rangeFrom ? rangeFrom : date);
+                }}
+                className="rounded-md border px-3 py-2 text-sm"
+                style={{ borderColor: "var(--line)", background: "#fff", color: "var(--ink)" }}
+              />
+            </label>
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => {
+                void (async () => {
+                  setBusy(true);
+                  setMessage(null);
+                  try {
+                    const from =
+                      rangeFrom < ADVANCE_SEARCH_MIN ? ADVANCE_SEARCH_MIN : rangeFrom;
+                    const to = rangeTo < from ? from : rangeTo;
+                    setRangeFrom(from);
+                    setRangeTo(to);
+                    await loadBrowseAdvances(from, to);
+                  } catch (err) {
+                    setMessage(
+                      err instanceof Error ? err.message : "Failed to load advances",
+                    );
+                  } finally {
+                    setBusy(false);
+                  }
+                })();
+              }}
+              className="rounded-md px-3 py-2 text-sm font-semibold text-white disabled:opacity-60"
+              style={{ background: "var(--accent)" }}
+            >
+              Apply
+            </button>
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => {
+                setRangeFrom(ADVANCE_SEARCH_MIN);
+                setRangeTo(today);
+                void (async () => {
+                  setBusy(true);
+                  try {
+                    await loadBrowseAdvances(ADVANCE_SEARCH_MIN, today);
+                  } finally {
+                    setBusy(false);
+                  }
+                })();
+              }}
+              className="rounded-md border px-3 py-2 text-sm font-semibold disabled:opacity-60"
+              style={{ borderColor: "var(--line)", background: "#fff" }}
+            >
+              Show all
+            </button>
+          </div>
+          {(
+            [
+              ["salary", "Salary advance", salaryAdvances] as const,
+              ["commission", "Commission advance", commissionAdvances] as const,
+            ]
+          ).map(([kind, title, rows]) => (
+            <div
+              key={kind}
+              className="mt-6 rounded-2xl border p-5 shadow-[var(--shadow)]"
+              style={{ borderColor: "var(--line)", background: "var(--panel)" }}
+            >
+              <AdvancesPanel
+                title={title}
+                rows={rows}
+                blockedNames={blockedNamesForKind(kind)}
+                knownNames={advanceKnownNames}
+                bookDate={bookDate}
+                canCreate={dayOpen || ((isHr || isBoss) && !rangeActive)}
+                isBoss={isHr || isBoss}
+                busy={busy}
+                onAdd={async (input) => {
+                  const sheetDate = await placeOnSheet(input.entry_date || bookDate);
+                  const { error } = await supabase.from("advances").insert({
+                    book_date: sheetDate,
+                    entry_date: sheetDate,
+                    kind,
+                    person_name: input.person_name,
+                    amount: input.amount,
+                    created_by: currentProfile.id,
+                    status: "pending",
+                  });
+                  if (error) throw error;
+                  await afterEntrySaved(sheetDate);
+                  await loadActiveAdvanceNames();
+                  await loadBrowseAdvances(
+                    rangeFrom < ADVANCE_SEARCH_MIN ? ADVANCE_SEARCH_MIN : rangeFrom,
+                    rangeTo,
+                  );
+                }}
+                onApprove={async (id) => {
+                  const { error } = await supabase.rpc("approve_advance", { p_id: id });
+                  if (error) throw error;
+                  await refresh(bookDate);
+                  await loadActiveAdvanceNames();
+                  await loadBrowseAdvances(
+                    rangeFrom < ADVANCE_SEARCH_MIN ? ADVANCE_SEARCH_MIN : rangeFrom,
+                    rangeTo,
+                  );
+                }}
+                onRepay={async (id) => {
+                  const { error } = await supabase.rpc("repay_advance", {
+                    p_id: id,
+                    p_date: isHr || isBoss ? bookDate : today,
+                  });
+                  if (error) throw error;
+                  await supabase.rpc("recompute_opening_balances_from", { p_from: bookDate });
+                  await refresh(bookDate);
+                  await loadActiveAdvanceNames();
+                  await loadBrowseAdvances(
+                    rangeFrom < ADVANCE_SEARCH_MIN ? ADVANCE_SEARCH_MIN : rangeFrom,
+                    rangeTo,
+                  );
+                }}
+                onDelete={async (id) => {
+                  const { error } = await supabase.from("advances").delete().eq("id", id);
+                  if (error) throw error;
+                  await supabase.rpc("recompute_opening_balances_from", { p_from: bookDate });
+                  await refresh(bookDate);
+                  await loadActiveAdvanceNames();
+                  await loadBrowseAdvances(
+                    rangeFrom < ADVANCE_SEARCH_MIN ? ADVANCE_SEARCH_MIN : rangeFrom,
+                    rangeTo,
+                  );
+                }}
+              />
+            </div>
+          ))}
+        </>
+      ) : null}
 
       {(tab === "receipts" || tab === "vouchers" || tab === "advances") ? (
         <div
@@ -961,6 +1438,7 @@ export function CashBookApp({
           }}
         />
       ) : null}
+      </div>
     </div>
   );
 }

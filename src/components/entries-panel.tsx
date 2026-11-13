@@ -7,7 +7,12 @@ import {
   formatMoney,
   remainingEditMs,
 } from "@/lib/dates";
-import type { DayStatus } from "@/lib/types";
+import type { Advance, AdvanceKind, DayStatus } from "@/lib/types";
+
+export type AdvancePick = Pick<
+  Advance,
+  "id" | "person_name" | "amount" | "repaid_amount" | "kind" | "status"
+>;
 
 export type EntryRow = {
   id: string;
@@ -51,13 +56,31 @@ type Props = {
   onClearRange?: () => void;
   onUpdateOpeningBalance?: (amount: number) => Promise<void>;
   onUnlockEntry?: (id: string) => Promise<void>;
-  onAdd: (input: { description: string; amount: number; entry_date: string }) => Promise<void>;
+  /** Approved advances available to recover via receipts. */
+  recoverableAdvances?: AdvancePick[];
+  onAdd: (input: {
+    description: string;
+    amount: number;
+    entry_date: string;
+    advance_id?: string;
+  }) => Promise<void>;
   onUpdate: (
     id: string,
     input: { description: string; amount: number; entry_date: string },
   ) => Promise<void>;
   onDelete: (id: string) => Promise<void>;
 };
+
+function detectAdvanceKindFromDescription(text: string): AdvanceKind | null {
+  const t = text.trim().toLowerCase();
+  if (/advance\s*salary|salary\s*advance/.test(t)) return "salary";
+  if (/advance\s*commission|commission\s*advance/.test(t)) return "commission";
+  return null;
+}
+
+function advanceOutstanding(a: AdvancePick) {
+  return Math.max(0, Number(a.amount) - Number(a.repaid_amount ?? 0));
+}
 
 function canEditRow(
   row: EntryRow,
@@ -148,6 +171,7 @@ export function EntriesPanel({
   onClearRange,
   onUpdateOpeningBalance,
   onUnlockEntry,
+  recoverableAdvances = [],
   onAdd,
   onUpdate,
   onDelete,
@@ -163,6 +187,7 @@ export function EntriesPanel({
   const [description, setDescription] = useState("");
   const [amount, setAmount] = useState("");
   const [entryDate, setEntryDate] = useState(bookDate);
+  const [advanceId, setAdvanceId] = useState("");
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editingOpening, setEditingOpening] = useState(false);
   const [openingDraft, setOpeningDraft] = useState("");
@@ -243,6 +268,29 @@ export function EntriesPanel({
 
   const canCreate = alwaysEditable || (dayOpen && dayStatus === "open");
   const showOpeningInTable = showOpeningBalance && !searchQuery.trim();
+  const matchedAdvanceKind =
+    kind === "receipt" ? detectAdvanceKindFromDescription(description) : null;
+  const advancePeople = useMemo(() => {
+    if (!matchedAdvanceKind) return [];
+    return recoverableAdvances
+      .filter(
+        (a) =>
+          (a.kind ?? "salary") === matchedAdvanceKind &&
+          a.status === "approved" &&
+          advanceOutstanding(a) > 0,
+      )
+      .sort((a, b) => a.person_name.localeCompare(b.person_name));
+  }, [recoverableAdvances, matchedAdvanceKind]);
+
+  useEffect(() => {
+    if (!matchedAdvanceKind) {
+      setAdvanceId("");
+      return;
+    }
+    if (advanceId && !advancePeople.some((a) => a.id === advanceId)) {
+      setAdvanceId("");
+    }
+  }, [matchedAdvanceKind, advancePeople, advanceId]);
 
   function focusNextFromDate() {
     descriptionRef.current?.focus();
@@ -250,6 +298,13 @@ export function EntriesPanel({
   }
 
   function focusNextFromDescription() {
+    if (matchedAdvanceKind && advancePeople.length > 0) {
+      const el = document.getElementById("advance-person-select");
+      if (el instanceof HTMLSelectElement) {
+        el.focus();
+        return;
+      }
+    }
     amountRef.current?.focus();
     amountRef.current?.select();
   }
@@ -267,16 +322,51 @@ export function EntriesPanel({
       setError(validationError);
       return;
     }
+    if (matchedAdvanceKind) {
+      if (advancePeople.length === 0) {
+        setError(
+          matchedAdvanceKind === "salary"
+            ? "No approved salary advances to recover. Add/approve a salary advance first."
+            : "No approved commission advances to recover. Add/approve a commission advance first.",
+        );
+        return;
+      }
+      if (!advanceId) {
+        setError("Select the person whose advance this receipt recovers");
+        return;
+      }
+      const picked = advancePeople.find((a) => a.id === advanceId);
+      const outstanding = picked ? advanceOutstanding(picked) : 0;
+      if (picked && Number(amount) > outstanding) {
+        setError(
+          `Amount cannot exceed outstanding ${formatMoney(outstanding)} for ${picked.person_name}`,
+        );
+        return;
+      }
+    }
     setBusy(true);
     setError(null);
     try {
+      const person = advancePeople.find((a) => a.id === advanceId);
+      const label =
+        matchedAdvanceKind === "salary"
+          ? "Advance salary"
+          : matchedAdvanceKind === "commission"
+            ? "Advance commission"
+            : null;
+      const desc =
+        label && person
+          ? `${label} — ${person.person_name}`
+          : description.trim();
       await onAdd({
-        description: description.trim(),
+        description: desc,
         amount: Number(amount),
         entry_date: dateValue,
+        advance_id: matchedAdvanceKind && advanceId ? advanceId : undefined,
       });
       setDescription("");
       setAmount("");
+      setAdvanceId("");
       setEntryDate(lockedEntryDate || bookDate);
       // Keep form open for fast entry; jump back to description after date stays
       window.setTimeout(() => descriptionRef.current?.focus(), 0);
@@ -333,6 +423,7 @@ export function EntriesPanel({
     setShowForm(false);
     setDescription("");
     setAmount("");
+    setAdvanceId("");
     setEntryDate(bookDate);
     setError(null);
   }
@@ -481,7 +572,7 @@ export function EntriesPanel({
                 color: "var(--ink)",
                 background: lockedEntryDate ? "var(--bg-deep)" : "#fff",
               }}
-              title={lockedEntryDate ? "Accounts can only enter for today" : undefined}
+              title={lockedEntryDate ? "Only Boss can change the entry date" : undefined}
             />
           </label>
           <label className="flex flex-col gap-1 text-xs" style={{ color: "var(--ink-muted)" }}>
@@ -498,9 +589,50 @@ export function EntriesPanel({
               }}
               className="rounded-md border px-3 py-2 text-sm"
               style={{ borderColor: "var(--line)", color: "var(--ink)" }}
-              placeholder={kind === "receipt" ? "Cash received from…" : "Paid to…"}
+              placeholder={
+                kind === "receipt"
+                  ? "Cash received from… (or Advance salary / Advance commission)"
+                  : "Paid to…"
+              }
             />
           </label>
+          {matchedAdvanceKind ? (
+            <label className="flex flex-col gap-1 text-xs md:col-span-2" style={{ color: "var(--ink-muted)" }}>
+              Person ({matchedAdvanceKind === "salary" ? "salary advance" : "commission advance"})
+              <select
+                id="advance-person-select"
+                required
+                value={advanceId}
+                onChange={(e) => {
+                  const id = e.target.value;
+                  setAdvanceId(id);
+                  const picked = advancePeople.find((a) => a.id === id);
+                  if (picked && !amount) {
+                    setAmount(String(advanceOutstanding(picked)));
+                  }
+                }}
+                onKeyDown={(e) => {
+                  if (e.key !== "Enter") return;
+                  e.preventDefault();
+                  amountRef.current?.focus();
+                  amountRef.current?.select();
+                }}
+                className="rounded-md border px-3 py-2 text-sm"
+                style={{ borderColor: "var(--line)", color: "var(--ink)", background: "#fff" }}
+              >
+                <option value="">
+                  {advancePeople.length === 0
+                    ? "No approved advances with balance"
+                    : "Select person…"}
+                </option>
+                {advancePeople.map((a) => (
+                  <option key={a.id} value={a.id}>
+                    {a.person_name} — due {formatMoney(advanceOutstanding(a))}
+                  </option>
+                ))}
+              </select>
+            </label>
+          ) : null}
           <label className="flex flex-col gap-1 text-xs" style={{ color: "var(--ink-muted)" }}>
             Amount
             <input

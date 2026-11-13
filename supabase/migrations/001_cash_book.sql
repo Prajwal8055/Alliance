@@ -85,6 +85,9 @@ create table if not exists public.cash_book_days (
 alter table public.cash_book_days
   add column if not exists opening_balance numeric(14, 2) not null default 0;
 
+alter table public.cash_book_days
+  add column if not exists remarks text not null default '';
+
 alter table public.cash_book_days enable row level security;
 
 drop policy if exists "days_select_authenticated" on public.cash_book_days;
@@ -107,6 +110,7 @@ create table if not exists public.receipts (
   entry_date date not null,
   receipt_number text not null unique,
   description text not null default '',
+  remarks text not null default '',
   amount numeric(14, 2) not null check (amount >= 0),
   created_by uuid not null references public.profiles (id),
   created_at timestamptz not null default now(),
@@ -114,18 +118,25 @@ create table if not exists public.receipts (
   updated_at timestamptz not null default now()
 );
 
+alter table public.receipts
+  add column if not exists remarks text not null default '';
+
 create table if not exists public.vouchers (
   id uuid primary key default gen_random_uuid(),
   book_date date not null references public.cash_book_days (book_date) on delete restrict,
   entry_date date not null,
   voucher_number text not null unique,
   description text not null default '',
+  remarks text not null default '',
   amount numeric(14, 2) not null check (amount >= 0),
   created_by uuid not null references public.profiles (id),
   created_at timestamptz not null default now(),
   editable_until timestamptz not null,
   updated_at timestamptz not null default now()
 );
+
+alter table public.vouchers
+  add column if not exists remarks text not null default '';
 
 create index if not exists receipts_book_date_idx on public.receipts (book_date);
 create index if not exists vouchers_book_date_idx on public.vouchers (book_date);

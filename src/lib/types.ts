@@ -1,8 +1,9 @@
-export type UserRole = "boss" | "accounts";
+export type UserRole = "boss" | "accounts" | "hr";
 export type DayStatus = "open" | "pending_approval" | "approved";
 export type AuditAction = "insert" | "update" | "delete";
 export type EntryKind = "receipt" | "voucher";
 export type AdvanceStatus = "pending" | "approved" | "repaid";
+export type AdvanceKind = "salary" | "commission";
 
 export type Profile = {
   id: string;
@@ -16,6 +17,7 @@ export type CashBookDay = {
   book_date: string;
   status: DayStatus;
   opening_balance: number;
+  remarks?: string;
   closed_at: string | null;
   approved_at: string | null;
   approved_by: string | null;
@@ -28,6 +30,7 @@ export type Receipt = {
   entry_date: string;
   receipt_number: string;
   description: string;
+  remarks?: string;
   amount: number;
   created_by: string;
   created_at: string;
@@ -41,6 +44,7 @@ export type Voucher = {
   entry_date: string;
   voucher_number: string;
   description: string;
+  remarks?: string;
   amount: number;
   created_by: string;
   created_at: string;
@@ -53,14 +57,17 @@ export type Advance = {
   book_date: string;
   entry_date: string;
   sl_no: number;
+  kind: AdvanceKind;
   person_name: string;
   amount: number;
+  repaid_amount?: number;
   status: AdvanceStatus;
   created_by: string;
   approved_by: string | null;
   approved_at: string | null;
   repaid_date: string | null;
   repaid_by: string | null;
+  repaid_via_receipt?: boolean;
   created_at: string;
   updated_at: string;
 };
