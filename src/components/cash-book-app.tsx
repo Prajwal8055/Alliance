@@ -415,7 +415,7 @@ export function CashBookApp({
             openingBalance={Number(day.opening_balance ?? 0)}
             showApprove={isBoss && day.status !== "approved"}
             showUnlock={isBoss && day.status === "approved"}
-            showEditWindow={isBoss}
+            showEditWindow
             canUnlockEntry={isBoss}
             dayActionBusy={busy}
             onApproveDay={approve}
@@ -487,7 +487,7 @@ export function CashBookApp({
             dayOpen={dayOpen}
             showApprove={isBoss && day.status !== "approved"}
             showUnlock={isBoss && day.status === "approved"}
-            showEditWindow={isBoss}
+            showEditWindow
             canUnlockEntry={isBoss}
             dayActionBusy={busy}
             onApproveDay={approve}
