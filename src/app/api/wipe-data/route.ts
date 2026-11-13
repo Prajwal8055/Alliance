@@ -51,6 +51,13 @@ async function wipeViaTables(
   };
 }
 
+function isMissingRpc(error: { code?: string; message: string }, name: string) {
+  return (
+    error.code === "PGRST202" ||
+    new RegExp(`${name}|Could not find the function`, "i").test(error.message)
+  );
+}
+
 export async function POST() {
   const gate = await requireBoss();
   if (!gate.ok) {
@@ -62,20 +69,32 @@ export async function POST() {
     const { data, error } = await supabase.rpc("wipe_all_cash_book_data");
 
     if (!error) {
-      return NextResponse.json({ ok: true, wiped: data });
+      // Belt-and-suspenders: ensure numbering restarts even if older wipe RPC lacked setval
+      await supabase.rpc("reset_entry_number_sequences");
+      return NextResponse.json({ ok: true, wiped: data, sequences_reset: true });
     }
 
-    const missingFn =
-      error.code === "PGRST202" ||
-      /wipe_all_cash_book_data|Could not find the function/i.test(error.message);
-
-    if (!missingFn) {
+    if (!isMissingRpc(error, "wipe_all_cash_book_data")) {
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
     const admin = createAdminClient();
     const wiped = await wipeViaTables(admin);
-    return NextResponse.json({ ok: true, wiped, via: "tables" });
+
+    const { error: resetError } = await admin.rpc("reset_entry_number_sequences");
+    if (resetError && !isMissingRpc(resetError, "reset_entry_number_sequences")) {
+      return NextResponse.json({ error: resetError.message }, { status: 500 });
+    }
+
+    return NextResponse.json({
+      ok: true,
+      wiped,
+      via: "tables",
+      sequences_reset: !resetError,
+      warning: resetError
+        ? "Data wiped, but numbering was not reset. Run migration 006_reset_sequences_on_wipe.sql in Supabase."
+        : undefined,
+    });
   } catch (err) {
     return NextResponse.json(
       { error: err instanceof Error ? err.message : "Wipe failed" },

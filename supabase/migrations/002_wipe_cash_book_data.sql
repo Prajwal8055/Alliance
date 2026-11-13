@@ -33,7 +33,7 @@ begin
   delete from public.audit_logs;
   delete from public.cash_book_days;
 
-  -- Restart numbering from 1
+  -- Restart both auto-number sequences from 1 (R-YYYY-0001 / V-YYYY-0001)
   perform setval('public.receipt_number_seq', 1, false);
   perform setval('public.voucher_number_seq', 1, false);
 
@@ -41,7 +41,8 @@ begin
     'receipts', receipt_count,
     'vouchers', voucher_count,
     'audit_logs', log_count,
-    'cash_book_days', day_count
+    'cash_book_days', day_count,
+    'sequences_reset', true
   );
 end;
 $$;

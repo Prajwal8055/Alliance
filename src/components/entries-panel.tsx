@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   formatCountdown,
   formatMoney,
@@ -42,6 +42,29 @@ type Props = {
 
 function canEditRow(row: EntryRow, dayOpen: boolean, now: number) {
   return dayOpen && remainingEditMs(row.editable_until, now) > 0;
+}
+
+function isValidEntryDate(value: string) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const [y, m, d] = value.split("-").map(Number);
+  const dt = new Date(y, m - 1, d);
+  return dt.getFullYear() === y && dt.getMonth() === m - 1 && dt.getDate() === d;
+}
+
+function validateEntryFields(input: {
+  entryDate: string;
+  description: string;
+  amount: string;
+}) {
+  if (!input.entryDate.trim()) return "Date is required";
+  if (!isValidEntryDate(input.entryDate.trim())) {
+    return "Date must be YYYY-MM-DD (example: 2026-11-13)";
+  }
+  if (!input.description.trim()) return "Description is required";
+  if (!input.amount.trim()) return "Amount is required";
+  const n = Number(input.amount);
+  if (!Number.isFinite(n) || n < 0) return "Enter a valid amount";
+  return null;
 }
 
 function EditIcon() {
@@ -100,6 +123,10 @@ export function EntriesPanel({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const dateRef = useRef<HTMLInputElement>(null);
+  const descriptionRef = useRef<HTMLInputElement>(null);
+  const amountRef = useRef<HTMLInputElement>(null);
+
   useEffect(() => {
     const t = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(t);
@@ -109,6 +136,14 @@ export function EntriesPanel({
     if (!editingId) setEntryDate(bookDate);
   }, [bookDate, editingId]);
 
+  const formOpen = Boolean(editingId) || showForm;
+
+  useEffect(() => {
+    if (!formOpen) return;
+    const id = window.setTimeout(() => dateRef.current?.focus(), 0);
+    return () => window.clearTimeout(id);
+  }, [formOpen, editingId]);
+
   const total = useMemo(
     () => rows.reduce((sum, r) => sum + Number(r.amount), 0),
     [rows],
@@ -116,20 +151,37 @@ export function EntriesPanel({
 
   const canCreate = dayOpen && dayStatus === "open";
 
+  function focusNextFromDate() {
+    descriptionRef.current?.focus();
+    descriptionRef.current?.select();
+  }
+
+  function focusNextFromDescription() {
+    amountRef.current?.focus();
+    amountRef.current?.select();
+  }
+
   async function submitAdd(e: React.FormEvent) {
     e.preventDefault();
     if (!canCreate) return;
+    const validationError = validateEntryFields({ entryDate, description, amount });
+    if (validationError) {
+      setError(validationError);
+      return;
+    }
     setBusy(true);
     setError(null);
     try {
       await onAdd({
         description: description.trim(),
         amount: Number(amount),
-        entry_date: entryDate,
+        entry_date: entryDate.trim(),
       });
       setDescription("");
       setAmount("");
-      setShowForm(false);
+      setEntryDate(bookDate);
+      // Keep form open for fast entry; jump back to description after date stays
+      window.setTimeout(() => descriptionRef.current?.focus(), 0);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to save");
     } finally {
@@ -140,13 +192,18 @@ export function EntriesPanel({
   async function submitEdit(e: React.FormEvent) {
     e.preventDefault();
     if (!editingId) return;
+    const validationError = validateEntryFields({ entryDate, description, amount });
+    if (validationError) {
+      setError(validationError);
+      return;
+    }
     setBusy(true);
     setError(null);
     try {
       await onUpdate(editingId, {
         description: description.trim(),
         amount: Number(amount),
-        entry_date: entryDate,
+        entry_date: entryDate.trim(),
       });
       setEditingId(null);
       setShowForm(false);
@@ -177,8 +234,6 @@ export function EntriesPanel({
     setError(null);
   }
 
-  const formOpen = Boolean(editingId) || showForm;
-
   return (
     <section style={{ fontFamily: "var(--font-body)" }}>
       <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
@@ -188,6 +243,7 @@ export function EntriesPanel({
           </h2>
           <p className="text-sm" style={{ color: "var(--ink-muted)" }}>
             Numbers auto-generate and never repeat. Edit window: 10 minutes after create.
+            Press Enter to move to the next field; Enter on Amount adds the entry.
           </p>
         </div>
         {canCreate && !formOpen ? (
@@ -225,14 +281,23 @@ export function EntriesPanel({
           onSubmit={editingId ? submitEdit : submitAdd}
           className="mb-5 grid gap-3 rounded-xl border p-4 md:grid-cols-[1fr_1.4fr_0.8fr_auto]"
           style={{ borderColor: "var(--line)", background: "#fff" }}
+          noValidate
         >
           <label className="flex flex-col gap-1 text-xs" style={{ color: "var(--ink-muted)" }}>
             Date
             <input
-              type="date"
+              ref={dateRef}
+              type="text"
               required
+              inputMode="numeric"
+              placeholder="YYYY-MM-DD"
               value={entryDate}
               onChange={(e) => setEntryDate(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key !== "Enter") return;
+                e.preventDefault();
+                focusNextFromDate();
+              }}
               className="rounded-md border px-3 py-2 text-sm"
               style={{ borderColor: "var(--line)", color: "var(--ink)" }}
             />
@@ -240,9 +305,15 @@ export function EntriesPanel({
           <label className="flex flex-col gap-1 text-xs" style={{ color: "var(--ink-muted)" }}>
             Description
             <input
+              ref={descriptionRef}
               required
               value={description}
               onChange={(e) => setDescription(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key !== "Enter") return;
+                e.preventDefault();
+                focusNextFromDescription();
+              }}
               className="rounded-md border px-3 py-2 text-sm"
               style={{ borderColor: "var(--line)", color: "var(--ink)" }}
               placeholder={kind === "receipt" ? "Cash received from…" : "Paid to…"}
@@ -251,12 +322,17 @@ export function EntriesPanel({
           <label className="flex flex-col gap-1 text-xs" style={{ color: "var(--ink-muted)" }}>
             Amount
             <input
+              ref={amountRef}
               required
               type="number"
               min="0"
               step="0.01"
               value={amount}
               onChange={(e) => setAmount(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key !== "Enter") return;
+                // Allow native form submit via Enter on the last field
+              }}
               className="rounded-md border px-3 py-2 text-sm"
               style={{ borderColor: "var(--line)", color: "var(--ink)" }}
             />

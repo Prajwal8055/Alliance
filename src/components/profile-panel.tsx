@@ -340,7 +340,7 @@ export function ProfilePanel({ profile, onProfileUpdated, onDataWiped }: Props) 
                   </h2>
                   <p className="mt-0.5 text-sm" style={{ color: "var(--ink-muted)" }}>
                     Permanently delete every receipt, voucher, day sheet, and activity log.
-                    Accounts stay. Hold the button for 3 seconds.
+                    Receipt and voucher numbers restart from 1. Accounts stay. Hold for 3 seconds.
                   </p>
                 </div>
 
