@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireBoss } from "@/lib/auth/require-boss";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { createClient } from "@/lib/supabase/server";
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -139,50 +140,44 @@ export async function DELETE(_request: Request, { params }: Params) {
 
     const bossId = gate.profile.id;
 
-    // Prefer RPC (allows reassign past created_by guard). Fallback: ban login.
-    const { error: reassignError } = await admin.rpc(
+    // Reassign ledger rows with the Boss session (is_boss), then hard-delete auth+profile.
+    const supabase = await createClient();
+    const { error: reassignError } = await supabase.rpc(
       "reassign_accounts_user_entries",
       { p_from: id, p_to: bossId },
     );
 
-    if (!reassignError) {
-      const { error: deleteError } = await admin.auth.admin.deleteUser(id);
-      if (deleteError) {
-        return NextResponse.json({ error: deleteError.message }, { status: 400 });
-      }
-      await admin.from("profiles").delete().eq("id", id);
-      return NextResponse.json({ ok: true, mode: "deleted" });
-    }
-
-    const missingFn =
-      reassignError.code === "PGRST202" ||
-      /reassign_accounts_user_entries|Could not find the function/i.test(
-        reassignError.message,
+    if (reassignError) {
+      // Admin fallback if RPC must run without a Boss JWT (e.g. service role).
+      const { error: adminReassignError } = await admin.rpc(
+        "reassign_accounts_user_entries",
+        { p_from: id, p_to: bossId },
       );
-
-    if (!missingFn) {
-      return NextResponse.json({ error: reassignError.message }, { status: 500 });
+      if (adminReassignError) {
+        return NextResponse.json(
+          { error: adminReassignError.message || reassignError.message },
+          { status: 500 },
+        );
+      }
     }
 
-    // Migration not applied yet — disable sign-in instead of hard delete
-    const { error: banError } = await admin.auth.admin.updateUserById(id, {
-      ban_duration: "876600h",
-    });
-    if (banError) {
-      return NextResponse.json({ error: banError.message }, { status: 400 });
+    const { error: deleteError } = await admin.auth.admin.deleteUser(id);
+    if (deleteError) {
+      return NextResponse.json({ error: deleteError.message }, { status: 400 });
     }
 
-    const label = profile.full_name?.includes("(removed)")
-      ? profile.full_name
-      : `${profile.full_name || "Accounts"} (removed)`;
-    await admin.from("profiles").update({ full_name: label }).eq("id", id);
+    const { error: profileDeleteError } = await admin
+      .from("profiles")
+      .delete()
+      .eq("id", id);
+    if (profileDeleteError) {
+      return NextResponse.json(
+        { error: profileDeleteError.message },
+        { status: 500 },
+      );
+    }
 
-    return NextResponse.json({
-      ok: true,
-      mode: "disabled",
-      warning:
-        "User sign-in disabled. Run migration 005_remove_accounts_user.sql to fully delete users.",
-    });
+    return NextResponse.json({ ok: true, mode: "deleted" });
   } catch (err) {
     return NextResponse.json(
       { error: err instanceof Error ? err.message : "Failed to remove user" },

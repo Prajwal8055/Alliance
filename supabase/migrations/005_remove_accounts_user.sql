@@ -56,7 +56,8 @@ security definer
 set search_path = public
 as $$
 begin
-  if not public.is_boss() then
+  if not public.is_boss()
+     and coalesce(auth.role(), '') is distinct from 'service_role' then
     raise exception 'Only boss can reassign user entries';
   end if;
 
