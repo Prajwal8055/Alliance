@@ -15,6 +15,16 @@ export function todayBookDate(now = new Date()): string {
   }).format(now);
 }
 
+/** Shift a YYYY-MM-DD book date by whole calendar days (local civil date). */
+export function shiftBookDate(date: string, days: number): string {
+  const [y, m, d] = date.split("-").map(Number);
+  const next = new Date(y, m - 1, d + days);
+  const yy = next.getFullYear();
+  const mm = String(next.getMonth() + 1).padStart(2, "0");
+  const dd = String(next.getDate()).padStart(2, "0");
+  return `${yy}-${mm}-${dd}`;
+}
+
 /** Minutes since local midnight in cash book timezone */
 export function localMinutesNow(now = new Date()): number {
   const parts = new Intl.DateTimeFormat("en-US", {

@@ -592,21 +592,27 @@ grant execute on function public.unlock_cash_book_day(date) to authenticated;
 
 create or replace function public.day_closing_balance(p_date date)
 returns numeric
-language sql
+language plpgsql
 stable
 security definer
 set search_path = public
 as $$
+declare
+  result numeric(14, 2);
+begin
+  -- Planned at runtime so this works after ADD COLUMN in the same migration
   select coalesce(
-    (
-      select d.opening_balance
-        + coalesce((select sum(amount) from public.receipts r where r.book_date = d.book_date), 0)
-        - coalesce((select sum(amount) from public.vouchers v where v.book_date = d.book_date), 0)
-      from public.cash_book_days d
-      where d.book_date = p_date
-    ),
+    d.opening_balance
+      + coalesce((select sum(amount) from public.receipts r where r.book_date = d.book_date), 0)
+      - coalesce((select sum(amount) from public.vouchers v where v.book_date = d.book_date), 0),
     0
-  );
+  )
+  into result
+  from public.cash_book_days d
+  where d.book_date = p_date;
+
+  return coalesce(result, 0);
+end;
 $$;
 
 create or replace function public.ensure_cash_book_day(p_date date)

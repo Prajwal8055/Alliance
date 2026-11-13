@@ -5,6 +5,7 @@ import {
   formatCountdown,
   formatMoney,
   remainingEditMs,
+  shiftBookDate,
 } from "@/lib/dates";
 import type { DayStatus } from "@/lib/types";
 
@@ -24,6 +25,8 @@ type Props = {
   bookDate: string;
   dayStatus: DayStatus;
   dayOpen: boolean;
+  /** Shown as the first receipts row (carry-forward). */
+  openingBalance?: number;
   showApprove?: boolean;
   showUnlock?: boolean;
   showEditWindow?: boolean;
@@ -31,6 +34,7 @@ type Props = {
   dayActionBusy?: boolean;
   onApproveDay?: () => void;
   onUnlockDay?: () => void;
+  onDateChange?: (date: string) => void;
   onUnlockEntry?: (id: string) => Promise<void>;
   onAdd: (input: { description: string; amount: number; entry_date: string }) => Promise<void>;
   onUpdate: (
@@ -102,6 +106,7 @@ export function EntriesPanel({
   bookDate,
   dayStatus,
   dayOpen,
+  openingBalance,
   showApprove,
   showUnlock,
   showEditWindow = false,
@@ -109,11 +114,14 @@ export function EntriesPanel({
   dayActionBusy,
   onApproveDay,
   onUnlockDay,
+  onDateChange,
   onUnlockEntry,
   onAdd,
   onUpdate,
   onDelete,
 }: Props) {
+  const showOpeningBalance = kind === "receipt" && openingBalance !== undefined;
+  const openingAmount = Number(openingBalance ?? 0);
   const [now, setNow] = useState(() => Date.now());
   const [description, setDescription] = useState("");
   const [amount, setAmount] = useState("");
@@ -144,10 +152,10 @@ export function EntriesPanel({
     return () => window.clearTimeout(id);
   }, [formOpen, editingId]);
 
-  const total = useMemo(
-    () => rows.reduce((sum, r) => sum + Number(r.amount), 0),
-    [rows],
-  );
+  const total = useMemo(() => {
+    const entries = rows.reduce((sum, r) => sum + Number(r.amount), 0);
+    return showOpeningBalance ? openingAmount + entries : entries;
+  }, [rows, showOpeningBalance, openingAmount]);
 
   const canCreate = dayOpen && dayStatus === "open";
 
@@ -246,24 +254,61 @@ export function EntriesPanel({
             Press Enter to move to the next field; Enter on Amount adds the entry.
           </p>
         </div>
-        {canCreate && !formOpen ? (
-          <button
-            type="button"
-            aria-label={kind === "receipt" ? "Add receipt" : "Add voucher"}
-            onClick={() => {
-              setShowForm(true);
-              setEditingId(null);
-              setDescription("");
-              setAmount("");
-              setEntryDate(bookDate);
-              setError(null);
-            }}
-            className="inline-flex h-11 w-11 items-center justify-center rounded-full text-2xl font-semibold leading-none text-white"
-            style={{ background: "var(--accent)" }}
-          >
-            +
-          </button>
-        ) : null}
+        <div className="flex flex-wrap items-end gap-3">
+          {onDateChange ? (
+            <div className="flex flex-col gap-1 text-xs" style={{ color: "var(--ink-muted)" }}>
+              <span>Sheet date</span>
+              <div className="flex items-center gap-1">
+                <button
+                  type="button"
+                  aria-label="Previous day"
+                  disabled={dayActionBusy}
+                  onClick={() => onDateChange(shiftBookDate(bookDate, -1))}
+                  className="inline-flex h-9 w-9 items-center justify-center rounded-md border text-base font-semibold transition disabled:opacity-50"
+                  style={{ borderColor: "var(--line)", background: "#fff", color: "var(--ink)" }}
+                >
+                  ‹
+                </button>
+                <input
+                  type="date"
+                  value={bookDate}
+                  disabled={dayActionBusy}
+                  onChange={(e) => onDateChange(e.target.value)}
+                  className="rounded-md border px-3 py-2 text-sm"
+                  style={{ borderColor: "var(--line)", background: "#fff", color: "var(--ink)" }}
+                />
+                <button
+                  type="button"
+                  aria-label="Next day"
+                  disabled={dayActionBusy}
+                  onClick={() => onDateChange(shiftBookDate(bookDate, 1))}
+                  className="inline-flex h-9 w-9 items-center justify-center rounded-md border text-base font-semibold transition disabled:opacity-50"
+                  style={{ borderColor: "var(--line)", background: "#fff", color: "var(--ink)" }}
+                >
+                  ›
+                </button>
+              </div>
+            </div>
+          ) : null}
+          {canCreate && !formOpen ? (
+            <button
+              type="button"
+              aria-label={kind === "receipt" ? "Add receipt" : "Add voucher"}
+              onClick={() => {
+                setShowForm(true);
+                setEditingId(null);
+                setDescription("");
+                setAmount("");
+                setEntryDate(bookDate);
+                setError(null);
+              }}
+              className="inline-flex h-11 w-11 items-center justify-center rounded-full text-2xl font-semibold leading-none text-white"
+              style={{ background: "var(--accent)" }}
+            >
+              +
+            </button>
+          ) : null}
+        </div>
       </div>
 
       {!canCreate && !editingId ? (
@@ -385,7 +430,21 @@ export function EntriesPanel({
             </tr>
           </thead>
           <tbody>
-            {rows.length === 0 ? (
+            {showOpeningBalance ? (
+              <tr className="border-t" style={{ borderColor: "var(--line)", background: "var(--bg-deep)" }}>
+                <td className="px-3 py-2.5 whitespace-nowrap">{bookDate}</td>
+                <td className="px-3 py-2.5 font-medium whitespace-nowrap" style={{ color: "var(--ink-muted)" }}>
+                  —
+                </td>
+                <td className="px-3 py-2.5 font-medium">Opening balance</td>
+                <td className="px-3 py-2.5 text-right whitespace-nowrap font-medium">
+                  {formatMoney(openingAmount)}
+                </td>
+                {showEditWindow ? <td className="w-0 px-2 py-2.5" /> : null}
+                <td className="w-0 px-2 py-2.5" />
+              </tr>
+            ) : null}
+            {rows.length === 0 && !showOpeningBalance ? (
               <tr>
                 <td
                   colSpan={showEditWindow ? 6 : 5}
@@ -395,8 +454,8 @@ export function EntriesPanel({
                   No entries yet.
                 </td>
               </tr>
-            ) : (
-              rows.map((row) => {
+            ) : null}
+            {rows.map((row) => {
                 const editable = canEditRow(row, dayOpen, now);
                 const left = remainingEditMs(row.editable_until, now);
                 const canUnlock = Boolean(canUnlockEntry && onUnlockEntry);
@@ -526,8 +585,7 @@ export function EntriesPanel({
                     </td>
                   </tr>
                 );
-              })
-            )}
+              })}
           </tbody>
         </table>
       </div>

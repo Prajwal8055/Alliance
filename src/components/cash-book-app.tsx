@@ -65,18 +65,8 @@ export function CashBookApp({
   const timezone =
     process.env.NEXT_PUBLIC_CASHBOOK_TIMEZONE ?? "America/Los_Angeles";
 
-  const refresh = useCallback(
-    async (date: string) => {
-      const { error: ensureError } = await supabase.rpc("ensure_cash_book_day", {
-        p_date: date,
-      });
-      if (ensureError) throw ensureError;
-
-      const { data: closedDay } = await supabase.rpc("close_cash_book_day_if_due", {
-        p_date: date,
-        p_timezone: timezone,
-      });
-
+  const loadDay = useCallback(
+    async (date: string, closedDay?: CashBookDay | null) => {
       const [{ data: dayFallback }, { data: receiptRows }, { data: voucherRows }, { data: logRows }] =
         await Promise.all([
           supabase.from("cash_book_days").select("*").eq("book_date", date).single(),
@@ -97,13 +87,30 @@ export function CashBookApp({
             .order("created_at", { ascending: false }),
         ]);
 
-      const dayRow = (closedDay as CashBookDay | null) ?? (dayFallback as CashBookDay | null);
+      const dayRow = closedDay ?? (dayFallback as CashBookDay | null);
       if (dayRow) setDay(dayRow);
       setReceipts((receiptRows as Receipt[]) ?? []);
       setVouchers((voucherRows as Voucher[]) ?? []);
       setLogs((logRows as AuditLog[]) ?? []);
     },
-    [supabase, timezone],
+    [supabase],
+  );
+
+  const refresh = useCallback(
+    async (date: string) => {
+      const { error: ensureError } = await supabase.rpc("ensure_cash_book_day", {
+        p_date: date,
+      });
+      if (ensureError) throw ensureError;
+
+      const { data: closedDay } = await supabase.rpc("close_cash_book_day_if_due", {
+        p_date: date,
+        p_timezone: timezone,
+      });
+
+      await loadDay(date, closedDay as CashBookDay | null);
+    },
+    [loadDay, supabase, timezone],
   );
 
   useEffect(() => {
@@ -113,6 +120,65 @@ export function CashBookApp({
     setVouchers(initialVouchers);
     setLogs(initialLogs);
   }, [initialDate, initialDay, initialReceipts, initialVouchers, initialLogs]);
+
+  // Keep every open session in sync when any user adds/edits/deletes entries.
+  useEffect(() => {
+    const channel = supabase
+      .channel(`cashbook-live-${bookDate}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "receipts",
+          filter: `book_date=eq.${bookDate}`,
+        },
+        () => {
+          void loadDay(bookDate);
+        },
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "vouchers",
+          filter: `book_date=eq.${bookDate}`,
+        },
+        () => {
+          void loadDay(bookDate);
+        },
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "cash_book_days",
+          filter: `book_date=eq.${bookDate}`,
+        },
+        () => {
+          void loadDay(bookDate);
+        },
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "audit_logs",
+          filter: `book_date=eq.${bookDate}`,
+        },
+        () => {
+          void loadDay(bookDate);
+        },
+      )
+      .subscribe();
+
+    return () => {
+      void supabase.removeChannel(channel);
+    };
+  }, [bookDate, loadDay, supabase]);
 
   useEffect(() => {
     if (!isBoss || !isToday) {
@@ -140,6 +206,25 @@ export function CashBookApp({
     } finally {
       setBusy(false);
     }
+  }
+
+  /** Entry date owns the sheet — amounts always live on that day's book. */
+  async function placeOnSheet(entryDate: string) {
+    const sheetDate = entryDate || bookDate;
+    const { error } = await supabase.rpc("ensure_cash_book_day", {
+      p_date: sheetDate,
+    });
+    if (error) throw error;
+    return sheetDate;
+  }
+
+  async function afterEntrySaved(sheetDate: string) {
+    await supabase.rpc("recompute_opening_balances_from", { p_from: sheetDate });
+    if (sheetDate === bookDate) {
+      await refresh(bookDate);
+      return;
+    }
+    await onDateChange(sheetDate);
   }
 
   async function approve() {
@@ -278,16 +363,6 @@ export function CashBookApp({
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-3" style={{ fontFamily: "var(--font-body)" }}>
-          <label className="flex flex-col gap-1 text-xs" style={{ color: "var(--ink-muted)" }}>
-            Sheet date
-            <input
-              type="date"
-              value={bookDate}
-              onChange={(e) => onDateChange(e.target.value)}
-              className="rounded-md border px-3 py-2 text-sm"
-              style={{ borderColor: "var(--line)", background: "var(--panel)" }}
-            />
-          </label>
           <StatusBadge status={day.status} />
           <AccountMenu
             profile={currentProfile}
@@ -337,6 +412,7 @@ export function CashBookApp({
             bookDate={bookDate}
             dayStatus={day.status}
             dayOpen={dayOpen}
+            openingBalance={Number(day.opening_balance ?? 0)}
             showApprove={isBoss && day.status !== "approved"}
             showUnlock={isBoss && day.status === "approved"}
             showEditWindow={isBoss}
@@ -344,6 +420,7 @@ export function CashBookApp({
             dayActionBusy={busy}
             onApproveDay={approve}
             onUnlockDay={unlock}
+            onDateChange={onDateChange}
             onUnlockEntry={async (id) => {
               if (!dayOpen) {
                 const { error: dayError } = await supabase.rpc("unlock_cash_book_day", {
@@ -367,31 +444,35 @@ export function CashBookApp({
               editable_until: r.editable_until,
             }))}
             onAdd={async (input) => {
+              const sheetDate = await placeOnSheet(input.entry_date || bookDate);
               const { error } = await supabase.from("receipts").insert({
-                book_date: bookDate,
-                entry_date: input.entry_date || bookDate,
+                book_date: sheetDate,
+                entry_date: sheetDate,
                 description: input.description,
                 amount: input.amount,
                 created_by: currentProfile.id,
               });
               if (error) throw error;
-              await refresh(bookDate);
+              await afterEntrySaved(sheetDate);
             }}
             onUpdate={async (id, input) => {
+              const sheetDate = await placeOnSheet(input.entry_date || bookDate);
               const { error } = await supabase
                 .from("receipts")
                 .update({
                   description: input.description,
                   amount: input.amount,
-                  entry_date: input.entry_date,
+                  entry_date: sheetDate,
+                  book_date: sheetDate,
                 })
                 .eq("id", id);
               if (error) throw error;
-              await refresh(bookDate);
+              await afterEntrySaved(sheetDate);
             }}
             onDelete={async (id) => {
               const { error } = await supabase.from("receipts").delete().eq("id", id);
               if (error) throw error;
+              await supabase.rpc("recompute_opening_balances_from", { p_from: bookDate });
               await refresh(bookDate);
             }}
           />
@@ -411,6 +492,7 @@ export function CashBookApp({
             dayActionBusy={busy}
             onApproveDay={approve}
             onUnlockDay={unlock}
+            onDateChange={onDateChange}
             onUnlockEntry={async (id) => {
               if (!dayOpen) {
                 const { error: dayError } = await supabase.rpc("unlock_cash_book_day", {
@@ -434,31 +516,35 @@ export function CashBookApp({
               editable_until: v.editable_until,
             }))}
             onAdd={async (input) => {
+              const sheetDate = await placeOnSheet(input.entry_date || bookDate);
               const { error } = await supabase.from("vouchers").insert({
-                book_date: bookDate,
-                entry_date: input.entry_date || bookDate,
+                book_date: sheetDate,
+                entry_date: sheetDate,
                 description: input.description,
                 amount: input.amount,
                 created_by: currentProfile.id,
               });
               if (error) throw error;
-              await refresh(bookDate);
+              await afterEntrySaved(sheetDate);
             }}
             onUpdate={async (id, input) => {
+              const sheetDate = await placeOnSheet(input.entry_date || bookDate);
               const { error } = await supabase
                 .from("vouchers")
                 .update({
                   description: input.description,
                   amount: input.amount,
-                  entry_date: input.entry_date,
+                  entry_date: sheetDate,
+                  book_date: sheetDate,
                 })
                 .eq("id", id);
               if (error) throw error;
-              await refresh(bookDate);
+              await afterEntrySaved(sheetDate);
             }}
             onDelete={async (id) => {
               const { error } = await supabase.from("vouchers").delete().eq("id", id);
               if (error) throw error;
+              await supabase.rpc("recompute_opening_balances_from", { p_from: bookDate });
               await refresh(bookDate);
             }}
           />
@@ -468,28 +554,20 @@ export function CashBookApp({
 
       {(tab === "receipts" || tab === "vouchers") ? (
         <div
-          className="mt-6 grid gap-3 rounded-2xl border p-4 sm:grid-cols-2 lg:grid-cols-4"
+          className="mt-6 grid gap-3 rounded-2xl border p-4 sm:grid-cols-3"
           style={{ borderColor: "var(--line)", background: "var(--panel)", fontFamily: "var(--font-body)" }}
         >
           <div>
             <p className="text-xs uppercase tracking-wide" style={{ color: "var(--ink-muted)" }}>
-              Opening balance
+              Total receipts
             </p>
             <p className="mt-1 text-2xl font-semibold" style={{ fontFamily: "var(--font-display)" }}>
-              {formatMoney(Number(day.opening_balance ?? 0))}
+              {formatMoney(Number(day.opening_balance ?? 0) + receiptTotal)}
             </p>
           </div>
           <div>
             <p className="text-xs uppercase tracking-wide" style={{ color: "var(--ink-muted)" }}>
-              Receipts in
-            </p>
-            <p className="mt-1 text-2xl font-semibold" style={{ fontFamily: "var(--font-display)" }}>
-              {formatMoney(receiptTotal)}
-            </p>
-          </div>
-          <div>
-            <p className="text-xs uppercase tracking-wide" style={{ color: "var(--ink-muted)" }}>
-              Vouchers out
+              Total vouchers
             </p>
             <p className="mt-1 text-2xl font-semibold" style={{ fontFamily: "var(--font-display)" }}>
               {formatMoney(voucherTotal)}
@@ -497,7 +575,7 @@ export function CashBookApp({
           </div>
           <div>
             <p className="text-xs uppercase tracking-wide" style={{ color: "var(--ink-muted)" }}>
-              Cash balance
+              Closing balance
             </p>
             <p className="mt-1 text-2xl font-semibold" style={{ fontFamily: "var(--font-display)" }}>
               {formatMoney(
@@ -505,7 +583,7 @@ export function CashBookApp({
               )}
             </p>
             <p className="mt-0.5 text-xs" style={{ color: "var(--ink-muted)" }}>
-              Closing for this day · carries to next opening
+              Next day’s opening
             </p>
           </div>
         </div>
