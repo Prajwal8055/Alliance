@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
+import { VoucherPrintModal, type VoucherPrintData } from "@/components/voucher-print";
 import {
   formatCountdown,
   formatDisplayDate,
@@ -46,10 +48,16 @@ type Props = {
   rangeFrom?: string;
   rangeTo?: string;
   rangeActive?: boolean;
-  /** When set, From/To cannot be changed (Accounts = today only). */
+  /** When set, From/To cannot be changed. */
   dateRangeLocked?: boolean;
+  /** Earliest selectable search date (Accounts = 2026-10-01). */
+  rangeMinDate?: string;
+  /** Latest selectable search date (Accounts = today). */
+  rangeMaxDate?: string;
   /** When set, entry form date is fixed (Accounts = today). */
   lockedEntryDate?: string;
+  /** Single-date search filter (auto-applies; used by Accounts). */
+  onSearchDateChange?: (date: string) => void;
   onRangeFromChange?: (date: string) => void;
   onRangeToChange?: (date: string) => void;
   onApplyRange?: () => void;
@@ -143,6 +151,16 @@ function DeleteIcon() {
   );
 }
 
+function MoreIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+      <circle cx="12" cy="5" r="1.7" />
+      <circle cx="12" cy="12" r="1.7" />
+      <circle cx="12" cy="19" r="1.7" />
+    </svg>
+  );
+}
+
 export function EntriesPanel({
   kind,
   title,
@@ -164,7 +182,10 @@ export function EntriesPanel({
   rangeTo,
   rangeActive = false,
   dateRangeLocked = false,
+  rangeMinDate,
+  rangeMaxDate,
   lockedEntryDate,
+  onSearchDateChange,
   onRangeFromChange,
   onRangeToChange,
   onApplyRange,
@@ -176,13 +197,17 @@ export function EntriesPanel({
   onUpdate,
   onDelete,
 }: Props) {
+  const showDateSearch = Boolean(onSearchDateChange && rangeFrom);
   const showDateRange = Boolean(
-    onRangeFromChange && onRangeToChange && onApplyRange && rangeFrom && rangeTo,
+    !onSearchDateChange &&
+      onRangeFromChange &&
+      onRangeToChange &&
+      onApplyRange &&
+      rangeFrom &&
+      rangeTo,
   );
   const showOpeningBalance = kind === "receipt" && openingBalance !== undefined;
   const openingAmount = Number(openingBalance ?? 0);
-  // Opening balance always owns R-YYYY-0001; real receipts continue from 0002.
-  const openingNumber = `R-${bookDate.slice(0, 4)}-0001`;
   const [now, setNow] = useState(() => Date.now());
   const [description, setDescription] = useState("");
   const [amount, setAmount] = useState("");
@@ -195,7 +220,13 @@ export function EntriesPanel({
   const [showForm, setShowForm] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [menuOpenId, setMenuOpenId] = useState<string | null>(null);
+  const [menuPos, setMenuPos] = useState<{ top: number; right: number } | null>(null);
+  const [printVoucher, setPrintVoucher] = useState<VoucherPrintData | null>(null);
+  const [menuMounted, setMenuMounted] = useState(false);
   const openingAmountRef = useRef<HTMLInputElement>(null);
+  const menuPanelRef = useRef<HTMLDivElement>(null);
+  const menuButtonRefs = useRef<Record<string, HTMLButtonElement | null>>({});
 
   const dateRef = useRef<HTMLInputElement>(null);
   const descriptionRef = useRef<HTMLInputElement>(null);
@@ -205,6 +236,50 @@ export function EntriesPanel({
     const t = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(t);
   }, []);
+
+  useEffect(() => {
+    setMenuMounted(true);
+  }, []);
+
+  useEffect(() => {
+    if (!menuOpenId) return;
+    function onPointerDown(e: MouseEvent) {
+      const target = e.target as Node;
+      if (menuPanelRef.current?.contains(target)) return;
+      const btn = menuButtonRefs.current[menuOpenId];
+      if (btn?.contains(target)) return;
+      setMenuOpenId(null);
+      setMenuPos(null);
+    }
+    function onScroll() {
+      setMenuOpenId(null);
+      setMenuPos(null);
+    }
+    document.addEventListener("mousedown", onPointerDown);
+    window.addEventListener("scroll", onScroll, true);
+    window.addEventListener("resize", onScroll);
+    return () => {
+      document.removeEventListener("mousedown", onPointerDown);
+      window.removeEventListener("scroll", onScroll, true);
+      window.removeEventListener("resize", onScroll);
+    };
+  }, [menuOpenId]);
+
+  function openVoucherMenu(rowId: string) {
+    if (menuOpenId === rowId) {
+      setMenuOpenId(null);
+      setMenuPos(null);
+      return;
+    }
+    const btn = menuButtonRefs.current[rowId];
+    if (!btn) return;
+    const rect = btn.getBoundingClientRect();
+    setMenuPos({
+      top: rect.bottom + 4,
+      right: window.innerWidth - rect.right,
+    });
+    setMenuOpenId(rowId);
+  }
 
   useEffect(() => {
     if (editingId) return;
@@ -430,83 +505,11 @@ export function EntriesPanel({
 
   return (
     <section style={{ fontFamily: "var(--font-body)" }}>
-      <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <h2 className="text-2xl font-semibold" style={{ fontFamily: "var(--font-display)" }}>
-            {title}
-          </h2>
-          <p className="text-sm" style={{ color: "var(--ink-muted)" }}>
-            Numbers auto-generate and never repeat.
-            {alwaysEditable
-              ? " Boss can edit anytime."
-              : " Edit window: 10 minutes after create."}{" "}
-            Press Enter to move to the next field; Enter on Amount adds the entry.
-          </p>
-        </div>
-        <div className="flex flex-wrap items-end gap-3">
-          <label className="flex flex-col gap-1 text-xs" style={{ color: "var(--ink-muted)" }}>
-            Search
-            <input
-              type="search"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Description…"
-              className="min-w-[10rem] rounded-md border px-3 py-2 text-sm"
-              style={{ borderColor: "var(--line)", background: "#fff", color: "var(--ink)" }}
-            />
-          </label>
-          {showDateRange ? (
-            <div
-              className="flex flex-wrap items-end gap-2 rounded-xl border px-3 py-2"
-              style={{ borderColor: "var(--line)", background: "var(--panel)" }}
-            >
-              <label className="flex flex-col gap-1 text-xs" style={{ color: "var(--ink-muted)" }}>
-                From
-                <input
-                  type="date"
-                  value={rangeFrom}
-                  disabled={dayActionBusy || dateRangeLocked}
-                  onChange={(e) => onRangeFromChange?.(e.target.value)}
-                  className="rounded-md border px-3 py-2 text-sm"
-                  style={{ borderColor: "var(--line)", background: "#fff", color: "var(--ink)" }}
-                />
-              </label>
-              <label className="flex flex-col gap-1 text-xs" style={{ color: "var(--ink-muted)" }}>
-                To
-                <input
-                  type="date"
-                  value={rangeTo}
-                  min={rangeFrom}
-                  disabled={dayActionBusy || dateRangeLocked}
-                  onChange={(e) => onRangeToChange?.(e.target.value)}
-                  className="rounded-md border px-3 py-2 text-sm"
-                  style={{ borderColor: "var(--line)", background: "#fff", color: "var(--ink)" }}
-                />
-              </label>
-              {!dateRangeLocked ? (
-                <button
-                  type="button"
-                  disabled={dayActionBusy}
-                  onClick={() => onApplyRange?.()}
-                  className="rounded-md px-3 py-2 text-sm font-semibold text-white disabled:opacity-60"
-                  style={{ background: "var(--accent)" }}
-                >
-                  Apply
-                </button>
-              ) : null}
-              {rangeActive && onClearRange && !dateRangeLocked ? (
-                <button
-                  type="button"
-                  disabled={dayActionBusy}
-                  onClick={() => onClearRange()}
-                  className="rounded-md border px-3 py-2 text-sm font-semibold disabled:opacity-60"
-                  style={{ borderColor: "var(--line)", background: "#fff", color: "var(--ink)" }}
-                >
-                  Clear
-                </button>
-              ) : null}
-            </div>
-          ) : null}
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+        <h2 className="text-2xl font-semibold" style={{ fontFamily: "var(--font-display)" }}>
+          {title}
+        </h2>
+        <div className="flex flex-wrap items-center gap-3">
           {canCreate && !formOpen ? (
             <button
               type="button"
@@ -516,26 +519,170 @@ export function EntriesPanel({
                 setEditingId(null);
                 setDescription("");
                 setAmount("");
-                setEntryDate(bookDate);
+                setAdvanceId("");
+                setEntryDate(lockedEntryDate || bookDate);
                 setError(null);
               }}
-              className="inline-flex h-11 w-11 items-center justify-center rounded-full text-2xl font-semibold leading-none text-white"
+              className="inline-flex items-center gap-1.5 rounded-full px-4 py-2 text-sm font-semibold text-white shadow-sm"
               style={{ background: "var(--accent)" }}
             >
-              +
+              <span className="text-lg leading-none" aria-hidden="true">
+                +
+              </span>
+              {kind === "receipt" ? "Add receipt" : "Add voucher"}
+            </button>
+          ) : null}
+          {!canCreate && showUnlock && onUnlockDay ? (
+            <button
+              type="button"
+              disabled={dayActionBusy}
+              onClick={onUnlockDay}
+              className="inline-flex items-center rounded-full px-4 py-2 text-sm font-semibold text-white disabled:opacity-60"
+              style={{ background: "var(--warn)" }}
+            >
+              Unlock day to add
             </button>
           ) : null}
         </div>
       </div>
 
+      <div className="mb-4 flex flex-wrap items-end gap-3">
+        <label className="flex flex-col gap-1 text-xs" style={{ color: "var(--ink-muted)" }}>
+          Search
+          <input
+            type="search"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="Description…"
+            className="min-w-[10rem] rounded-md border px-3 py-2 text-sm"
+            style={{ borderColor: "var(--line)", background: "#fff", color: "var(--ink)" }}
+          />
+        </label>
+        {showDateSearch ? (
+          <>
+            <label className="flex flex-col gap-1 text-xs" style={{ color: "var(--ink-muted)" }}>
+              Date
+              <input
+                type="date"
+                value={rangeFrom}
+                min={rangeMinDate}
+                max={rangeMaxDate}
+                disabled={dayActionBusy || dateRangeLocked}
+                onChange={(e) => {
+                  const next = e.target.value;
+                  if (!next || next === rangeFrom) return;
+                  const ok = confirm(
+                    `Open ${formatDisplayDate(next)}?\n\nYou can view entries (including approved days). Editing is only allowed on today until 6:30 PM.`,
+                  );
+                  if (!ok) {
+                    // Controlled value stays on current day until OK.
+                    e.target.value = rangeFrom ?? "";
+                    return;
+                  }
+                  onSearchDateChange?.(next);
+                }}
+                className="rounded-md border px-3 py-2 text-sm"
+                style={{ borderColor: "var(--line)", background: "#fff", color: "var(--ink)" }}
+              />
+            </label>
+            {rangeFrom !== rangeMaxDate && onClearRange ? (
+              <button
+                type="button"
+                disabled={dayActionBusy}
+                onClick={() => onClearRange()}
+                className="rounded-md border px-3 py-2 text-sm font-semibold disabled:opacity-60"
+                style={{ borderColor: "var(--line)", background: "#fff", color: "var(--ink)" }}
+              >
+                Today
+              </button>
+            ) : null}
+          </>
+        ) : null}
+        {showDateRange ? (
+          <div
+            className="flex flex-wrap items-end gap-2 rounded-xl border px-3 py-2"
+            style={{ borderColor: "var(--line)", background: "var(--panel)" }}
+          >
+            <label className="flex flex-col gap-1 text-xs" style={{ color: "var(--ink-muted)" }}>
+              From
+              <input
+                type="date"
+                value={rangeFrom}
+                min={rangeMinDate}
+                max={rangeMaxDate}
+                disabled={dayActionBusy || dateRangeLocked}
+                onChange={(e) => onRangeFromChange?.(e.target.value)}
+                className="rounded-md border px-3 py-2 text-sm"
+                style={{ borderColor: "var(--line)", background: "#fff", color: "var(--ink)" }}
+              />
+            </label>
+            <label className="flex flex-col gap-1 text-xs" style={{ color: "var(--ink-muted)" }}>
+              To
+              <input
+                type="date"
+                value={rangeTo}
+                min={rangeFrom}
+                max={rangeMaxDate}
+                disabled={dayActionBusy || dateRangeLocked}
+                onChange={(e) => onRangeToChange?.(e.target.value)}
+                className="rounded-md border px-3 py-2 text-sm"
+                style={{ borderColor: "var(--line)", background: "#fff", color: "var(--ink)" }}
+              />
+            </label>
+            {!dateRangeLocked ? (
+              <button
+                type="button"
+                disabled={dayActionBusy}
+                onClick={() => onApplyRange?.()}
+                className="rounded-md px-3 py-2 text-sm font-semibold text-white disabled:opacity-60"
+                style={{ background: "var(--accent)" }}
+              >
+                Apply
+              </button>
+            ) : null}
+            {rangeActive && onClearRange && !dateRangeLocked ? (
+              <button
+                type="button"
+                disabled={dayActionBusy}
+                onClick={() => onClearRange()}
+                className="rounded-md border px-3 py-2 text-sm font-semibold disabled:opacity-60"
+                style={{ borderColor: "var(--line)", background: "#fff", color: "var(--ink)" }}
+              >
+                Clear
+              </button>
+            ) : null}
+          </div>
+        ) : null}
+      </div>
+
       {!canCreate && !editingId ? (
-        <p className="mb-4 text-sm" style={{ color: "var(--ink-muted)" }}>
-          {dayStatus === "approved"
-            ? "This day is approved and locked."
-            : dayStatus === "pending_approval"
-              ? "Waiting for Boss approval — editing closed."
-              : "Editing is closed for this day."}
-        </p>
+        <div
+          className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border px-4 py-3"
+          style={{ borderColor: "var(--line)", background: "var(--locked-soft)" }}
+        >
+          <p className="text-sm" style={{ color: "var(--locked)" }}>
+            {dayStatus === "approved"
+              ? showUnlock
+                ? "This day is approved and locked — unlock to allow edits."
+                : "Approved sheet — view only. You can see entries but cannot edit."
+              : dayStatus === "pending_approval"
+                ? "Day closed at 6:30 PM — waiting for Boss approval. Editing is closed."
+                : rangeActive
+                  ? "Date range is view only — return to Today to edit (until 6:30 PM)."
+                  : "View only for this date. Return to Today to add or edit entries (until 6:30 PM)."}
+          </p>
+          {showUnlock && onUnlockDay ? (
+            <button
+              type="button"
+              disabled={dayActionBusy}
+              onClick={onUnlockDay}
+              className="rounded-md px-4 py-2 text-sm font-semibold text-white disabled:opacity-60"
+              style={{ background: "var(--accent)" }}
+            >
+              Unlock
+            </button>
+          ) : null}
+        </div>
       ) : null}
 
       {formOpen && (canCreate || editingId) ? (
@@ -705,8 +852,8 @@ export function EntriesPanel({
               <tr className="border-t" style={{ borderColor: "var(--line)", background: "var(--bg-deep)" }}>
                 <td className="px-3 py-2.5 whitespace-nowrap tabular-nums">1</td>
                 <td className="px-3 py-2.5 whitespace-nowrap">{formatDisplayDate(bookDate)}</td>
-                <td className="px-3 py-2.5 font-medium whitespace-nowrap">
-                  {openingNumber}
+                <td className="px-3 py-2.5 whitespace-nowrap" style={{ color: "var(--ink-muted)" }}>
+                  —
                 </td>
                 <td className="px-3 py-2.5 font-medium">Opening balance</td>
                 <td className="px-3 py-2.5 text-right whitespace-nowrap font-medium">
@@ -868,68 +1015,187 @@ export function EntriesPanel({
                       </td>
                     ) : null}
                     <td className="w-0 px-2 py-2.5 whitespace-nowrap">
-                      <div className="flex items-center justify-end gap-1">
-                        {editable ? (
-                          <>
+                      {kind === "voucher" ? (
+                        <div className="flex items-center justify-end">
+                          <button
+                            type="button"
+                            ref={(el) => {
+                              menuButtonRefs.current[row.id] = el;
+                            }}
+                            aria-label={`Actions for ${row.number}`}
+                            aria-haspopup="menu"
+                            aria-expanded={menuOpenId === row.id}
+                            title="More"
+                            className="inline-flex h-8 w-8 items-center justify-center rounded-md transition hover:bg-[var(--accent-soft)]"
+                            style={{ color: "var(--ink)" }}
+                            onClick={() => openVoucherMenu(row.id)}
+                          >
+                            <MoreIcon />
+                          </button>
+                          {menuMounted && menuOpenId === row.id && menuPos
+                            ? createPortal(
+                                <div
+                                  ref={menuPanelRef}
+                                  role="menu"
+                                  className="fixed z-[80] min-w-[10.5rem] overflow-hidden rounded-xl border shadow-[var(--shadow)]"
+                                  style={{
+                                    top: menuPos.top,
+                                    right: menuPos.right,
+                                    borderColor: "var(--line)",
+                                    background: "var(--panel)",
+                                  }}
+                                >
+                                  <button
+                                    type="button"
+                                    role="menuitem"
+                                    className="block w-full px-3 py-2.5 text-left text-sm hover:bg-[var(--bg-deep)]"
+                                    onMouseDown={(e) => e.preventDefault()}
+                                    onClick={() => {
+                                      setPrintVoucher({
+                                        number: row.number,
+                                        entry_date: row.entry_date,
+                                        description: row.description,
+                                        amount: row.amount,
+                                        prepared_by: row.created_by_name,
+                                        locked: !editable,
+                                      });
+                                      setMenuOpenId(null);
+                                      setMenuPos(null);
+                                    }}
+                                  >
+                                    Print voucher
+                                  </button>
+                                  {editable ? (
+                                    <>
+                                      <button
+                                        type="button"
+                                        role="menuitem"
+                                        className="block w-full px-3 py-2.5 text-left text-sm hover:bg-[var(--bg-deep)]"
+                                        onMouseDown={(e) => e.preventDefault()}
+                                        onClick={() => {
+                                          setMenuOpenId(null);
+                                          setMenuPos(null);
+                                          startEdit(row);
+                                        }}
+                                      >
+                                        Edit
+                                      </button>
+                                      <button
+                                        type="button"
+                                        role="menuitem"
+                                        className="block w-full px-3 py-2.5 text-left text-sm hover:bg-[var(--bg-deep)]"
+                                        style={{ color: "var(--danger)" }}
+                                        onMouseDown={(e) => e.preventDefault()}
+                                        onClick={() => {
+                                          setMenuOpenId(null);
+                                          setMenuPos(null);
+                                          void (async () => {
+                                            if (!confirm(`Delete ${row.number}?`)) return;
+                                            setBusy(true);
+                                            try {
+                                              await onDelete(row.id);
+                                            } catch (err) {
+                                              setError(
+                                                err instanceof Error
+                                                  ? err.message
+                                                  : "Delete failed",
+                                              );
+                                            } finally {
+                                              setBusy(false);
+                                            }
+                                          })();
+                                        }}
+                                      >
+                                        Delete
+                                      </button>
+                                    </>
+                                  ) : canUnlock ? (
+                                    <button
+                                      type="button"
+                                      role="menuitem"
+                                      className="block w-full px-3 py-2.5 text-left text-sm hover:bg-[var(--bg-deep)]"
+                                      onMouseDown={(e) => e.preventDefault()}
+                                      onClick={() => {
+                                        setMenuOpenId(null);
+                                        setMenuPos(null);
+                                        void (async () => {
+                                          const unlocked = await unlockRow();
+                                          if (unlocked) startEdit(row);
+                                        })();
+                                      }}
+                                    >
+                                      Unlock & edit
+                                    </button>
+                                  ) : null}
+                                </div>,
+                                document.body,
+                              )
+                            : null}
+                        </div>
+                      ) : (
+                        <div className="flex items-center justify-end gap-1">
+                          {editable ? (
+                            <>
+                              <button
+                                type="button"
+                                aria-label={`Edit ${row.number}`}
+                                title="Edit"
+                                className="inline-flex h-8 w-8 items-center justify-center rounded-md transition hover:bg-[var(--accent-soft)]"
+                                style={{ color: "var(--accent)" }}
+                                onClick={() => startEdit(row)}
+                              >
+                                <EditIcon />
+                              </button>
+                              <button
+                                type="button"
+                                aria-label={`Delete ${row.number}`}
+                                title="Delete"
+                                className="inline-flex h-8 w-8 items-center justify-center rounded-md transition hover:bg-[var(--danger-soft)]"
+                                style={{ color: "var(--danger)" }}
+                                onClick={async () => {
+                                  if (!confirm(`Delete ${row.number}?`)) return;
+                                  setBusy(true);
+                                  try {
+                                    await onDelete(row.id);
+                                  } catch (err) {
+                                    setError(err instanceof Error ? err.message : "Delete failed");
+                                  } finally {
+                                    setBusy(false);
+                                  }
+                                }}
+                              >
+                                <DeleteIcon />
+                              </button>
+                            </>
+                          ) : canUnlock ? (
                             <button
                               type="button"
-                              aria-label={`Edit ${row.number}`}
-                              title="Edit"
-                              className="inline-flex h-8 w-8 items-center justify-center rounded-md transition hover:bg-[var(--accent-soft)]"
+                              disabled={busy || dayActionBusy}
+                              aria-label={`Unlock and edit ${row.number}`}
+                              title="Unlock and edit"
+                              className="inline-flex h-8 w-8 items-center justify-center rounded-md transition hover:bg-[var(--accent-soft)] disabled:opacity-60"
                               style={{ color: "var(--accent)" }}
-                              onClick={() => startEdit(row)}
+                              onClick={async () => {
+                                const unlocked = await unlockRow();
+                                if (unlocked) startEdit(row);
+                              }}
                             >
                               <EditIcon />
                             </button>
+                          ) : (
                             <button
                               type="button"
-                              aria-label={`Delete ${row.number}`}
-                              title="Delete"
-                              className="inline-flex h-8 w-8 items-center justify-center rounded-md transition hover:bg-[var(--danger-soft)]"
-                              style={{ color: "var(--danger)" }}
-                              onClick={async () => {
-                                if (!confirm(`Delete ${row.number}?`)) return;
-                                setBusy(true);
-                                try {
-                                  await onDelete(row.id);
-                                } catch (err) {
-                                  setError(err instanceof Error ? err.message : "Delete failed");
-                                } finally {
-                                  setBusy(false);
-                                }
-                              }}
+                              disabled
+                              aria-label="Editing locked"
+                              title="Locked"
+                              className="inline-flex h-8 w-8 items-center justify-center rounded-md opacity-40"
+                              style={{ color: "var(--ink-muted)" }}
                             >
-                              <DeleteIcon />
+                              <EditIcon />
                             </button>
-                          </>
-                        ) : canUnlock ? (
-                          <button
-                            type="button"
-                            disabled={busy || dayActionBusy}
-                            aria-label={`Unlock and edit ${row.number}`}
-                            title="Unlock and edit"
-                            className="inline-flex h-8 w-8 items-center justify-center rounded-md transition hover:bg-[var(--accent-soft)] disabled:opacity-60"
-                            style={{ color: "var(--accent)" }}
-                            onClick={async () => {
-                              const unlocked = await unlockRow();
-                              if (unlocked) startEdit(row);
-                            }}
-                          >
-                            <EditIcon />
-                          </button>
-                        ) : (
-                          <button
-                            type="button"
-                            disabled
-                            aria-label="Editing locked"
-                            title="Locked"
-                            className="inline-flex h-8 w-8 items-center justify-center rounded-md opacity-40"
-                            style={{ color: "var(--ink-muted)" }}
-                          >
-                            <EditIcon />
-                          </button>
-                        )}
-                      </div>
+                          )}
+                        </div>
+                      )}
                     </td>
                   </tr>
                 );
@@ -937,6 +1203,16 @@ export function EntriesPanel({
           </tbody>
         </table>
       </div>
+
+      {menuMounted && printVoucher
+        ? createPortal(
+            <VoucherPrintModal
+              voucher={printVoucher}
+              onClose={() => setPrintVoucher(null)}
+            />,
+            document.body,
+          )
+        : null}
 
       <div className="mt-3 flex flex-wrap items-center justify-end gap-3">
         {showApprove ? (

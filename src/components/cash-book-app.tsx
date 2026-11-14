@@ -12,9 +12,11 @@ import { ProfilePanel } from "@/components/profile-panel";
 import { StatementPanel } from "@/components/statement-panel";
 import { UsersPanel } from "@/components/users-panel";
 import {
+  CLOSE_MINUTES,
   formatDisplayDate,
   formatMoney,
   isPastCloseTime,
+  localMinutesNow,
   todayBookDate,
 } from "@/lib/dates";
 import { createClient } from "@/lib/supabase/client";
@@ -111,7 +113,7 @@ export function CashBookApp({
   const dayOpen =
     day.status === "open" && !rangeActive && (isBoss || isHr || isToday);
   const timezone =
-    process.env.NEXT_PUBLIC_CASHBOOK_TIMEZONE ?? "America/Los_Angeles";
+    process.env.NEXT_PUBLIC_CASHBOOK_TIMEZONE ?? "Asia/Kolkata";
 
   function nameFor(userId: string | null | undefined) {
     if (!userId) return "—";
@@ -329,13 +331,6 @@ export function CashBookApp({
     }
   }
 
-  // Accounts: only today's sheet (no back/forward dates).
-  useEffect(() => {
-    if (isBoss || isHr) return;
-    if (bookDate === today && !rangeActive) return;
-    void onDateChange(today);
-  }, [isBoss, isHr, today, bookDate, rangeActive]);
-
   // Boss uses combined statement; HR lands on Advances; Accounts never stays on Advances/statement.
   useEffect(() => {
     if (isBoss && (tab === "receipts" || tab === "vouchers")) {
@@ -347,13 +342,30 @@ export function CashBookApp({
     }
   }, [isHr, isAccounts, tab]);
 
-  async function applyDateRange() {
-    if (!isBoss && !isHr) {
-      await onDateChange(today);
+  // Flip to pending_approval at 6:30 PM without needing a full reload.
+  useEffect(() => {
+    if (!isToday || rangeActive || day.status !== "open") return;
+    if (isPastCloseTime()) {
+      void refresh(bookDate);
       return;
     }
+    const msUntilClose = (CLOSE_MINUTES - localMinutesNow()) * 60_000 + 500;
+    const id = window.setTimeout(() => {
+      void refresh(bookDate);
+    }, msUntilClose);
+    return () => window.clearTimeout(id);
+  }, [isToday, rangeActive, day.status, bookDate, refresh]);
+
+  async function applyDateRange() {
     if (!rangeFrom || !rangeTo) {
       setMessage("Choose From and To dates");
+      return;
+    }
+    // Accounts may browse history, but never ahead of today.
+    if (isAccounts && (rangeFrom > today || rangeTo > today)) {
+      setMessage("Accounts can only search up to today's date.");
+      setRangeFrom(rangeFrom > today ? today : rangeFrom);
+      setRangeTo(today);
       return;
     }
     if (rangeFrom > rangeTo) {
@@ -423,12 +435,18 @@ export function CashBookApp({
 
   async function clearDateRange() {
     setRangeActive(false);
-    setRangeFrom(bookDate);
-    setRangeTo(bookDate);
+    // Accounts Clear always returns to today's editable sheet.
+    const next = isAccounts ? today : bookDate;
+    setRangeFrom(next);
+    setRangeTo(next);
     setBusy(true);
     setMessage(null);
     try {
-      await refresh(bookDate);
+      if (isAccounts && bookDate !== today) {
+        await onDateChange(today);
+        return;
+      }
+      await refresh(next);
     } catch (err) {
       setMessage(err instanceof Error ? err.message : "Failed to clear filter");
     } finally {
@@ -438,10 +456,7 @@ export function CashBookApp({
 
   /** Entry date owns the sheet — amounts always live on that day's book. */
   async function placeOnSheet(entryDate: string) {
-    const sheetDate = isBoss ? entryDate || bookDate : today;
-    if (!isBoss && entryDate && entryDate !== today) {
-      throw new Error("Only Boss can enter entries for other dates");
-    }
+    const sheetDate = entryDate || bookDate;
     const { error } = await supabase.rpc("ensure_cash_book_day", {
       p_date: sheetDate,
     });
@@ -641,7 +656,8 @@ export function CashBookApp({
   }, [isBoss, rangeActive, showApproval, closingBalance, bookDate]);
 
   useEffect(() => {
-    if (isBoss || rangeActive || showApproval) {
+    // Only nudge Accounts when today's sheet is approved — past approved days are quiet view-only.
+    if (isBoss || rangeActive || showApproval || !isToday) {
       setShowApprovedNotice(false);
       return;
     }
@@ -653,7 +669,62 @@ export function CashBookApp({
       typeof window !== "undefined" &&
       sessionStorage.getItem(approvedNoticeKey(bookDate)) === "1";
     setShowApprovedNotice(!dismissed);
-  }, [isBoss, rangeActive, showApproval, day.status, bookDate]);
+  }, [isBoss, rangeActive, showApproval, day.status, bookDate, isToday]);
+
+  const pendingAdvances = useMemo(
+    () =>
+      (tab === "advances" ? browseAdvances : advances).filter((a) => a.status === "pending"),
+    [tab, browseAdvances, advances],
+  );
+
+  const notifications = useMemo((): AppNotification[] => {
+    const items: AppNotification[] = [];
+    if (day.status === "pending_approval" && isBoss) {
+      items.push({
+        id: "day-pending",
+        title: "Day awaiting approval",
+        body: `${formatDisplayDate(bookDate)} is ready for Boss approval.`,
+        tone: "warn",
+        onClick: () => setTab(isBoss ? "statement" : "receipts"),
+      });
+    }
+    if (day.status === "approved") {
+      items.push({
+        id: "day-locked",
+        title: "Sheet approved",
+        body: `${formatDisplayDate(bookDate)} is locked. Hold Unlock day to reopen.`,
+        tone: "info",
+        onClick: () => setTab(isBoss ? "statement" : "receipts"),
+      });
+    }
+    if (!rangeActive && closingBalance < 5000) {
+      items.push({
+        id: "low-cash",
+        title: "Low closing balance",
+        body: `Cash is ${formatMoney(closingBalance)} (below ₹5,000).`,
+        tone: "danger",
+        onClick: () => setTab(isBoss ? "statement" : "receipts"),
+      });
+    }
+    if ((isBoss || isHr) && pendingAdvances.length > 0) {
+      items.push({
+        id: "adv-pending",
+        title: `${pendingAdvances.length} advance${pendingAdvances.length === 1 ? "" : "s"} pending`,
+        body: "Open Advances to review and approve.",
+        tone: "warn",
+        onClick: () => setTab("advances"),
+      });
+    }
+    return items;
+  }, [
+    day.status,
+    bookDate,
+    rangeActive,
+    closingBalance,
+    pendingAdvances.length,
+    isBoss,
+    isHr,
+  ]);
 
   if (isProfileView || isUsersView || isActivityView) {
     return (
@@ -737,67 +808,12 @@ export function CashBookApp({
         : !isHr
           ? ([
               ["receipts", "Receipts"] as const,
-              ["vouchers", "Cash voucher"] as const,
+              ["vouchers", "Voucher"] as const,
             ] as const)
           : []),
       ...(isHr || isBoss ? ([["advances", "Advances"] as const] as const) : []),
     ] as const
   );
-
-  const pendingAdvances = useMemo(
-    () =>
-      (tab === "advances" ? browseAdvances : advances).filter((a) => a.status === "pending"),
-    [tab, browseAdvances, advances],
-  );
-
-  const notifications = useMemo((): AppNotification[] => {
-    const items: AppNotification[] = [];
-    if (day.status === "pending_approval" && isBoss) {
-      items.push({
-        id: "day-pending",
-        title: "Day awaiting approval",
-        body: `${formatDisplayDate(bookDate)} is ready for Boss approval.`,
-        tone: "warn",
-        onClick: () => setTab(isBoss ? "statement" : "receipts"),
-      });
-    }
-    if (day.status === "approved") {
-      items.push({
-        id: "day-locked",
-        title: "Sheet approved",
-        body: `${formatDisplayDate(bookDate)} is locked. Hold Unlock day to reopen.`,
-        tone: "info",
-        onClick: () => setTab(isBoss ? "statement" : "receipts"),
-      });
-    }
-    if (!rangeActive && closingBalance < 5000) {
-      items.push({
-        id: "low-cash",
-        title: "Low closing balance",
-        body: `Cash is ${formatMoney(closingBalance)} (below ₹5,000).`,
-        tone: "danger",
-        onClick: () => setTab(isBoss ? "statement" : "receipts"),
-      });
-    }
-    if ((isBoss || isHr) && pendingAdvances.length > 0) {
-      items.push({
-        id: "adv-pending",
-        title: `${pendingAdvances.length} advance${pendingAdvances.length === 1 ? "" : "s"} pending`,
-        body: "Open Advances to review and approve.",
-        tone: "warn",
-        onClick: () => setTab("advances"),
-      });
-    }
-    return items;
-  }, [
-    day.status,
-    bookDate,
-    rangeActive,
-    closingBalance,
-    pendingAdvances.length,
-    isBoss,
-    isHr,
-  ]);
 
   return (
     <div className="flex w-full flex-1 flex-col">
@@ -993,19 +1009,41 @@ export function CashBookApp({
             dayActionBusy={busy}
             onApproveDay={approve}
             onUnlockDay={unlock}
-            rangeFrom={isAccounts ? today : rangeFrom}
-            rangeTo={isAccounts ? today : rangeTo}
+            rangeFrom={rangeFrom}
+            rangeTo={rangeTo}
             rangeActive={rangeActive}
-            dateRangeLocked={isAccounts}
-            lockedEntryDate={isBoss ? undefined : today}
-            onRangeFromChange={(date) => {
-              setRangeFrom(date);
-              setRangeTo(date);
-            }}
-            onRangeToChange={(date) => {
-              setRangeTo(date < rangeFrom ? rangeFrom : date);
-            }}
-            onApplyRange={() => void applyDateRange()}
+            rangeMinDate={isAccounts ? ADVANCE_SEARCH_MIN : undefined}
+            rangeMaxDate={isAccounts ? today : undefined}
+            lockedEntryDate={isAccounts ? today : undefined}
+            onSearchDateChange={
+              isAccounts
+                ? (date) => {
+                    let next = date;
+                    if (next < ADVANCE_SEARCH_MIN) next = ADVANCE_SEARCH_MIN;
+                    if (next > today) next = today;
+                    if (!next.startsWith("2026")) next = today;
+                    setRangeFrom(next);
+                    setRangeTo(next);
+                    void onDateChange(next);
+                  }
+                : undefined
+            }
+            onRangeFromChange={
+              isAccounts
+                ? undefined
+                : (date) => {
+                    setRangeFrom(date);
+                    setRangeTo(date);
+                  }
+            }
+            onRangeToChange={
+              isAccounts
+                ? undefined
+                : (date) => {
+                    setRangeTo(date < rangeFrom ? rangeFrom : date);
+                  }
+            }
+            onApplyRange={isAccounts ? undefined : () => void applyDateRange()}
             onClearRange={() => void clearDateRange()}
             recoverableAdvances={recoverableAdvances}
             onUpdateOpeningBalance={async (amount) => {
@@ -1041,7 +1079,9 @@ export function CashBookApp({
               created_by_name: nameFor(r.created_by),
             }))}
             onAdd={async (input) => {
-              const sheetDate = await placeOnSheet(input.entry_date || bookDate);
+              const sheetDate = await placeOnSheet(
+                isAccounts ? today : input.entry_date || bookDate,
+              );
               const { error } = await supabase.from("receipts").insert({
                 book_date: sheetDate,
                 entry_date: sheetDate,
@@ -1062,7 +1102,9 @@ export function CashBookApp({
               await afterEntrySaved(sheetDate);
             }}
             onUpdate={async (id, input) => {
-              const sheetDate = await placeOnSheet(input.entry_date || bookDate);
+              const sheetDate = await placeOnSheet(
+                isAccounts ? today : input.entry_date || bookDate,
+              );
               const { error } = await supabase
                 .from("receipts")
                 .update({
@@ -1087,7 +1129,7 @@ export function CashBookApp({
         {tab === "vouchers" ? (
           <EntriesPanel
             kind="voucher"
-            title="Cash voucher"
+            title="Voucher"
             bookDate={bookDate}
             dayStatus={day.status}
             dayOpen={dayOpen}
@@ -1099,19 +1141,41 @@ export function CashBookApp({
             dayActionBusy={busy}
             onApproveDay={approve}
             onUnlockDay={unlock}
-            rangeFrom={isAccounts ? today : rangeFrom}
-            rangeTo={isAccounts ? today : rangeTo}
+            rangeFrom={rangeFrom}
+            rangeTo={rangeTo}
             rangeActive={rangeActive}
-            dateRangeLocked={isAccounts}
-            lockedEntryDate={isBoss ? undefined : today}
-            onRangeFromChange={(date) => {
-              setRangeFrom(date);
-              setRangeTo(date);
-            }}
-            onRangeToChange={(date) => {
-              setRangeTo(date < rangeFrom ? rangeFrom : date);
-            }}
-            onApplyRange={() => void applyDateRange()}
+            rangeMinDate={isAccounts ? ADVANCE_SEARCH_MIN : undefined}
+            rangeMaxDate={isAccounts ? today : undefined}
+            lockedEntryDate={isAccounts ? today : undefined}
+            onSearchDateChange={
+              isAccounts
+                ? (date) => {
+                    let next = date;
+                    if (next < ADVANCE_SEARCH_MIN) next = ADVANCE_SEARCH_MIN;
+                    if (next > today) next = today;
+                    if (!next.startsWith("2026")) next = today;
+                    setRangeFrom(next);
+                    setRangeTo(next);
+                    void onDateChange(next);
+                  }
+                : undefined
+            }
+            onRangeFromChange={
+              isAccounts
+                ? undefined
+                : (date) => {
+                    setRangeFrom(date);
+                    setRangeTo(date);
+                  }
+            }
+            onRangeToChange={
+              isAccounts
+                ? undefined
+                : (date) => {
+                    setRangeTo(date < rangeFrom ? rangeFrom : date);
+                  }
+            }
+            onApplyRange={isAccounts ? undefined : () => void applyDateRange()}
             onClearRange={() => void clearDateRange()}
             onUnlockEntry={async (id) => {
               if (!dayOpen) {
@@ -1137,7 +1201,9 @@ export function CashBookApp({
               created_by_name: nameFor(v.created_by),
             }))}
             onAdd={async (input) => {
-              const sheetDate = await placeOnSheet(input.entry_date || bookDate);
+              const sheetDate = await placeOnSheet(
+                isAccounts ? today : input.entry_date || bookDate,
+              );
               const { error } = await supabase.from("vouchers").insert({
                 book_date: sheetDate,
                 entry_date: sheetDate,
@@ -1149,7 +1215,9 @@ export function CashBookApp({
               await afterEntrySaved(sheetDate);
             }}
             onUpdate={async (id, input) => {
-              const sheetDate = await placeOnSheet(input.entry_date || bookDate);
+              const sheetDate = await placeOnSheet(
+                isAccounts ? today : input.entry_date || bookDate,
+              );
               const { error } = await supabase
                 .from("vouchers")
                 .update({

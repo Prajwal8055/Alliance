@@ -6,7 +6,7 @@ import { withSupabase } from "npm:@supabase/server@1";
 
 export default {
   fetch: withSupabase({ auth: "secret" }, async (_req, ctx) => {
-    const timezone = Deno.env.get("CASHBOOK_TIMEZONE") ?? "America/Los_Angeles";
+    const timezone = Deno.env.get("CASHBOOK_TIMEZONE") ?? "Asia/Kolkata";
 
     const todayLocal = new Intl.DateTimeFormat("en-CA", {
       timeZone: timezone,

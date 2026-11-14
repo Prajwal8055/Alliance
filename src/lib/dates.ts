@@ -1,5 +1,5 @@
 const TIMEZONE =
-  process.env.NEXT_PUBLIC_CASHBOOK_TIMEZONE ?? "America/Los_Angeles";
+  process.env.NEXT_PUBLIC_CASHBOOK_TIMEZONE ?? "Asia/Kolkata";
 
 export function getCashbookTimezone() {
   return TIMEZONE;

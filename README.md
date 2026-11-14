@@ -89,4 +89,4 @@ The app also calls `close_cash_book_day_if_due` on load as a backup after 6:30.
 
 ## Timezone
 
-Default: `America/Los_Angeles` via `NEXT_PUBLIC_CASHBOOK_TIMEZONE`. Change it in Vercel/Supabase if Alliance Square uses another zone.
+Default: `Asia/Kolkata` (Mysore / IST) via `NEXT_PUBLIC_CASHBOOK_TIMEZONE`. Day close is 6:30 PM in that zone.

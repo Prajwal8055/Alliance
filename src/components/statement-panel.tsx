@@ -162,7 +162,6 @@ export function StatementPanel({
   const [openingDraft, setOpeningDraft] = useState(String(openingBalance));
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [search, setSearch] = useState("");
   const [tableSearch, setTableSearch] = useState("");
   const [addMenuOpen, setAddMenuOpen] = useState(false);
   const [chartMode, setChartMode] = useState<ChartMode>("daily");
@@ -421,7 +420,7 @@ export function StatementPanel({
   ).length;
 
   const filteredRows = useMemo(() => {
-    const q = (tableSearch || search).trim().toLowerCase();
+    const q = tableSearch.trim().toLowerCase();
     return statementRows.filter(({ line }) => {
       if (txFilter === "receipts" && line.kind !== "receipt" && line.kind !== "advance_repay") {
         return false;
@@ -445,7 +444,7 @@ export function StatementPanel({
             }`;
       return text.toLowerCase().includes(q);
     });
-  }, [statementRows, search, tableSearch, txFilter]);
+  }, [statementRows, tableSearch, txFilter]);
 
   const editable = !rangeActive;
 
@@ -626,38 +625,6 @@ export function StatementPanel({
             Clear
           </button>
         ) : null}
-        <span
-          className="rounded-full px-3 py-1 text-xs font-semibold capitalize"
-          style={{
-            background: dayStatus === "approved" ? "var(--accent-soft)" : "var(--warn-soft)",
-            color: dayStatus === "approved" ? "var(--accent)" : "var(--warn)",
-          }}
-        >
-          Status: {dayStatus.replace("_", " ")}
-        </span>
-        <div className="relative min-w-[14rem] flex-1">
-          <svg
-            className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2"
-            width="15"
-            height="15"
-            viewBox="0 0 24 24"
-            fill="none"
-            aria-hidden
-            style={{ color: "var(--ink-muted)" }}
-          >
-            <circle cx="11" cy="11" r="7" stroke="currentColor" strokeWidth="1.7" />
-            <path d="M20 20l-3.5-3.5" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" />
-          </svg>
-          <input
-            type="search"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search transactions, vouchers, parties…"
-            className="w-full rounded-lg border py-1.5 pl-9 pr-3 text-sm"
-            style={{ borderColor: "var(--line)", background: "#fff", color: "var(--ink)" }}
-          />
-        </div>
-
         {editable ? (
           <div ref={addMenuRef} className="relative ml-auto flex items-center gap-1.5">
             <button
@@ -760,7 +727,7 @@ export function StatementPanel({
             >
               <div className="flex items-center justify-between">
                 <p className="text-[13px] font-medium" style={{ color: "var(--ink-muted)" }}>
-                  Receipts (Cr)
+                  {rangeActive ? "Period Receipts (Cr)" : "Today's Receipts (Cr)"}
                 </p>
                 <span style={{ color: "var(--income)" }}>
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden>
@@ -779,7 +746,7 @@ export function StatementPanel({
             >
               <div className="flex items-center justify-between">
                 <p className="text-[13px] font-medium" style={{ color: "var(--ink-muted)" }}>
-                  Payments + Advances (Dr)
+                  {rangeActive ? "Period Payments + Advances (Dr)" : "Today's Payments + Advances (Dr)"}
                 </p>
                 <span style={{ color: "var(--danger)" }}>
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden>
@@ -983,6 +950,15 @@ export function StatementPanel({
                 Export
               </button>
             ) : null}
+            <span
+              className="rounded-full px-3 py-1 text-xs font-semibold capitalize"
+              style={{
+                background: dayStatus === "approved" ? "var(--accent-soft)" : "var(--warn-soft)",
+                color: dayStatus === "approved" ? "var(--accent)" : "var(--warn)",
+              }}
+            >
+              Status: {dayStatus.replace("_", " ")}
+            </span>
           </div>
         </div>
 

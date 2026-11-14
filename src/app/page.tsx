@@ -36,9 +36,16 @@ export default async function HomePage({
     );
   }
 
-  // Always open on the current cash-book day; Boss can still change dates in-app.
-  await searchParams;
-  const bookDate = todayBookDate();
+  // Default today; honor ?date= so Accounts/Boss can browse history (view past/approved sheets).
+  const params = await searchParams;
+  const today = todayBookDate();
+  const SEARCH_MIN = "2026-10-01";
+  const requested = typeof params.date === "string" ? params.date.trim() : "";
+  const validRequested = /^\d{4}-\d{2}-\d{2}$/.test(requested) ? requested : "";
+  const bookDate =
+    validRequested && validRequested >= SEARCH_MIN && validRequested <= today
+      ? validRequested
+      : today;
 
   const { data: day, error: dayError } = await supabase.rpc("ensure_cash_book_day", {
     p_date: bookDate,
@@ -56,7 +63,7 @@ export default async function HomePage({
   }
 
   const timezone =
-    process.env.NEXT_PUBLIC_CASHBOOK_TIMEZONE ?? "America/Los_Angeles";
+    process.env.NEXT_PUBLIC_CASHBOOK_TIMEZONE ?? "Asia/Kolkata";
 
   const { data: closed } = await supabase.rpc("close_cash_book_day_if_due", {
     p_date: bookDate,
