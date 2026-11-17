@@ -71,6 +71,26 @@ export async function POST() {
     if (!error) {
       // Belt-and-suspenders: ensure numbering restarts even if older wipe RPC lacked setval
       await supabase.rpc("reset_entry_number_sequences");
+      try {
+        const admin = createAdminClient();
+        const { data: listed } = await admin.storage.from("voucher-photos").list("", {
+          limit: 1000,
+        });
+        for (const folder of listed ?? []) {
+          if (!folder.name) continue;
+          const { data: files } = await admin.storage
+            .from("voucher-photos")
+            .list(folder.name, { limit: 1000 });
+          const paths = (files ?? [])
+            .map((f) => (f.name ? `${folder.name}/${f.name}` : ""))
+            .filter(Boolean);
+          if (paths.length) {
+            await admin.storage.from("voucher-photos").remove(paths);
+          }
+        }
+      } catch {
+        // Storage cleanup is best-effort after ledger wipe
+      }
       return NextResponse.json({ ok: true, wiped: data, sequences_reset: true });
     }
 

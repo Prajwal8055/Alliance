@@ -1,9 +1,10 @@
 import { NextResponse } from "next/server";
+import { validatePassword } from "@/lib/auth/password-policy";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 
 export async function POST(request: Request) {
-  let body: { password?: string };
+  let body: { password?: string; currentPassword?: string };
   try {
     body = await request.json();
   } catch {
@@ -11,12 +12,18 @@ export async function POST(request: Request) {
   }
 
   const password = (body.password ?? "").trim();
+  const currentPassword = (body.currentPassword ?? "").trim();
 
-  if (password.length < 8) {
+  if (!currentPassword) {
     return NextResponse.json(
-      { error: "New password must be at least 8 characters" },
+      { error: "Current password is required" },
       { status: 400 },
     );
+  }
+
+  const policyError = validatePassword(password);
+  if (policyError) {
+    return NextResponse.json({ error: policyError }, { status: 400 });
   }
 
   try {
@@ -26,8 +33,19 @@ export async function POST(request: Request) {
       error: userError,
     } = await supabase.auth.getUser();
 
-    if (userError || !user) {
+    if (userError || !user?.email) {
       return NextResponse.json({ error: "Not signed in" }, { status: 401 });
+    }
+
+    const { error: verifyError } = await supabase.auth.signInWithPassword({
+      email: user.email,
+      password: currentPassword,
+    });
+    if (verifyError) {
+      return NextResponse.json(
+        { error: "Current password is incorrect" },
+        { status: 401 },
+      );
     }
 
     const admin = createAdminClient();
@@ -40,9 +58,9 @@ export async function POST(request: Request) {
     }
 
     return NextResponse.json({ ok: true });
-  } catch (err) {
+  } catch {
     return NextResponse.json(
-      { error: err instanceof Error ? err.message : "Failed to update password" },
+      { error: "Failed to update password" },
       { status: 500 },
     );
   }

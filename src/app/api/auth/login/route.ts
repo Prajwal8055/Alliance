@@ -130,9 +130,10 @@ export async function POST(request: Request) {
 
     return response;
   } catch (err) {
-    return NextResponse.json(
-      { error: err instanceof Error ? err.message : "Sign-in failed" },
-      { status: 500 },
-    );
+    const message =
+      err instanceof Error && /login protection is unavailable/i.test(err.message)
+        ? err.message
+        : "Sign-in failed";
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }

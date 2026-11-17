@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { validatePassword } from "@/lib/auth/password-policy";
 import { requireBoss } from "@/lib/auth/require-boss";
 import { createAdminClient } from "@/lib/supabase/admin";
 
@@ -20,11 +21,9 @@ export async function POST(request: Request, { params }: Params) {
   }
 
   const password = (body.password ?? "").trim();
-  if (password.length < 8) {
-    return NextResponse.json(
-      { error: "Password must be at least 8 characters" },
-      { status: 400 },
-    );
+  const policyError = validatePassword(password);
+  if (policyError) {
+    return NextResponse.json({ error: policyError }, { status: 400 });
   }
 
   try {

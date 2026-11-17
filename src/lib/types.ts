@@ -50,6 +50,8 @@ export type Voucher = {
   created_at: string;
   editable_until: string;
   updated_at: string;
+  /** Private storage path in bucket voucher-photos; set once at create. */
+  photo_path?: string | null;
 };
 
 export type Advance = {

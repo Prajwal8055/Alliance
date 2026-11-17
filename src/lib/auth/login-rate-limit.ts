@@ -22,9 +22,9 @@ export async function checkLoginAllowed(email: string): Promise<LoginGate> {
     .maybeSingle();
 
   if (error) {
-    // If the migration is missing, fail open for availability but log-like via throw upstream only on write
+    // Fail closed: without the rate-limit table, refuse login rather than allow unlimited guesses
     if (error.code === "42P01" || /does not exist|schema cache/i.test(error.message)) {
-      return { ok: true, failedCount: 0 };
+      throw new Error("Login protection is unavailable. Try again later.");
     }
     throw new Error(error.message);
   }
@@ -65,7 +65,7 @@ export async function recordLoginFailure(email: string): Promise<{
 
   if (readError) {
     if (readError.code === "42P01" || /does not exist|schema cache/i.test(readError.message)) {
-      return { failedCount: 1, lockedUntil: null, remaining: MAX_LOGIN_ATTEMPTS - 1 };
+      throw new Error("Login protection is unavailable. Try again later.");
     }
     throw new Error(readError.message);
   }
@@ -93,11 +93,7 @@ export async function recordLoginFailure(email: string): Promise<{
 
   if (writeError) {
     if (writeError.code === "42P01" || /does not exist|schema cache/i.test(writeError.message)) {
-      return {
-        failedCount,
-        lockedUntil,
-        remaining: Math.max(0, MAX_LOGIN_ATTEMPTS - failedCount),
-      };
+      throw new Error("Login protection is unavailable. Try again later.");
     }
     throw new Error(writeError.message);
   }

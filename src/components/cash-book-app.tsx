@@ -11,6 +11,7 @@ import { NoticeModal } from "@/components/notice-modal";
 import { ProfilePanel } from "@/components/profile-panel";
 import { StatementPanel } from "@/components/statement-panel";
 import { UsersPanel } from "@/components/users-panel";
+import { VoucherPhotoModal } from "@/components/voucher-photo-modal";
 import {
   CLOSE_MINUTES,
   formatDisplayDate,
@@ -28,6 +29,11 @@ import type {
   Receipt,
   Voucher,
 } from "@/lib/types";
+import {
+  fetchVoucherPhotoFlags,
+  getVoucherPhotoSignedUrl,
+  uploadVoucherPhoto,
+} from "@/lib/voucher-photo";
 
 type Tab =
   | "statement"
@@ -103,6 +109,15 @@ export function CashBookApp({
   const [rangeTo, setRangeTo] = useState(() => todayBookDate());
   const [rangeActive, setRangeActive] = useState(false);
   const [profileNames, setProfileNames] = useState<Record<string, string>>({});
+  const [photoReview, setPhotoReview] = useState<{
+    title: string;
+    url: string | null;
+    loading: boolean;
+    error: string | null;
+  } | null>(null);
+  const [voucherPhotoFlags, setVoucherPhotoFlags] = useState<Record<string, true>>(
+    {},
+  );
 
   const isBoss = currentProfile.role === "boss";
   const isHr = currentProfile.role === "hr";
@@ -114,6 +129,69 @@ export function CashBookApp({
     day.status === "open" && !rangeActive && (isBoss || isHr || isToday);
   const timezone =
     process.env.NEXT_PUBLIC_CASHBOOK_TIMEZONE ?? "Asia/Kolkata";
+
+  async function createVoucherWithOptionalPhoto(input: {
+    sheetDate: string;
+    description: string;
+    amount: number;
+    remarks?: string;
+    photoFile?: File | null;
+  }) {
+    const { data, error } = await supabase
+      .from("vouchers")
+      .insert({
+        book_date: input.sheetDate,
+        entry_date: input.sheetDate,
+        description: input.description,
+        remarks: input.remarks,
+        amount: input.amount,
+        created_by: currentProfile.id,
+      })
+      .select("id")
+      .single();
+    if (error) throw error;
+    if (!data?.id) throw new Error("Voucher was not created");
+
+    if (input.photoFile) {
+      try {
+        await uploadVoucherPhoto({
+          voucherId: data.id,
+          file: input.photoFile,
+        });
+        setVoucherPhotoFlags((prev) => ({ ...prev, [data.id]: true }));
+      } catch (photoErr) {
+        await supabase.from("vouchers").delete().eq("id", data.id);
+        throw photoErr instanceof Error
+          ? photoErr
+          : new Error("Failed to upload voucher photo");
+      }
+    }
+  }
+
+  async function openVoucherPhoto(row: { id: string; number: string }) {
+    setPhotoReview({
+      title: row.number,
+      url: null,
+      loading: true,
+      error: null,
+    });
+    try {
+      const url = await getVoucherPhotoSignedUrl(row.id);
+      setPhotoReview({
+        title: row.number,
+        url,
+        loading: false,
+        error: null,
+      });
+    } catch (err) {
+      setPhotoReview({
+        title: row.number,
+        url: null,
+        loading: false,
+        error: err instanceof Error ? err.message : "Could not open photo",
+      });
+    }
+  }
 
   function nameFor(userId: string | null | undefined) {
     if (!userId) return "—";
@@ -196,6 +274,10 @@ export function CashBookApp({
       setVouchers((voucherRows as Voucher[]) ?? []);
       setAdvances((advanceRows as Advance[]) ?? []);
       setLogs((logRows as AuditLog[]) ?? []);
+      const voucherList = (voucherRows as Voucher[]) ?? [];
+      void fetchVoucherPhotoFlags(
+        voucherList.map((v) => ({ id: v.id, created_by: v.created_by })),
+      ).then((flags) => setVoucherPhotoFlags(flags));
     },
     [supabase],
   );
@@ -356,33 +438,40 @@ export function CashBookApp({
     return () => window.clearTimeout(id);
   }, [isToday, rangeActive, day.status, bookDate, refresh]);
 
-  async function applyDateRange() {
-    if (!rangeFrom || !rangeTo) {
+  async function applyDateRange(nextFrom = rangeFrom, nextTo = rangeTo) {
+    let from = nextFrom;
+    let to = nextTo;
+    if (!from || !to) {
       setMessage("Choose From and To dates");
       return;
     }
     // Accounts may browse history, but never ahead of today.
-    if (isAccounts && (rangeFrom > today || rangeTo > today)) {
+    if (isAccounts && (from > today || to > today)) {
       setMessage("Accounts can only search up to today's date.");
-      setRangeFrom(rangeFrom > today ? today : rangeFrom);
-      setRangeTo(today);
+      from = from > today ? today : from;
+      to = today;
+      setRangeFrom(from);
+      setRangeTo(to);
       return;
     }
-    if (rangeFrom > rangeTo) {
+    if (from > to) {
       setMessage("From date must be on or before To date");
       return;
     }
 
+    setRangeFrom(from);
+    setRangeTo(to);
+
     // Same day → normal editable sheet
-    if (rangeFrom === rangeTo) {
-      await onDateChange(rangeFrom);
+    if (from === to) {
+      await onDateChange(from);
       return;
     }
 
     setBusy(true);
     setMessage(null);
     try {
-      await supabase.rpc("ensure_cash_book_day", { p_date: rangeFrom });
+      await supabase.rpc("ensure_cash_book_day", { p_date: from });
       const [
         { data: fromDay },
         { data: receiptRows },
@@ -390,32 +479,32 @@ export function CashBookApp({
         { data: advanceRows },
         { data: logRows },
       ] = await Promise.all([
-        supabase.from("cash_book_days").select("*").eq("book_date", rangeFrom).single(),
+        supabase.from("cash_book_days").select("*").eq("book_date", from).single(),
         supabase
           .from("receipts")
           .select("*")
-          .gte("book_date", rangeFrom)
-          .lte("book_date", rangeTo)
+          .gte("book_date", from)
+          .lte("book_date", to)
           .order("book_date", { ascending: true })
           .order("created_at", { ascending: true }),
         supabase
           .from("vouchers")
           .select("*")
-          .gte("book_date", rangeFrom)
-          .lte("book_date", rangeTo)
+          .gte("book_date", from)
+          .lte("book_date", to)
           .order("book_date", { ascending: true })
           .order("created_at", { ascending: true }),
         supabase
           .from("advances")
           .select("*")
-          .gte("book_date", rangeFrom)
-          .lte("book_date", rangeTo)
+          .gte("book_date", from)
+          .lte("book_date", to)
           .order("sl_no", { ascending: true }),
         supabase
           .from("audit_logs")
           .select("*")
-          .gte("book_date", rangeFrom)
-          .lte("book_date", rangeTo)
+          .gte("book_date", from)
+          .lte("book_date", to)
           .order("created_at", { ascending: false }),
       ]);
 
@@ -424,8 +513,12 @@ export function CashBookApp({
       setVouchers((voucherRows as Voucher[]) ?? []);
       setAdvances((advanceRows as Advance[]) ?? []);
       setLogs((logRows as AuditLog[]) ?? []);
+      const voucherList = (voucherRows as Voucher[]) ?? [];
+      void fetchVoucherPhotoFlags(
+        voucherList.map((v) => ({ id: v.id, created_by: v.created_by })),
+      ).then((flags) => setVoucherPhotoFlags(flags));
       setRangeActive(true);
-      setBookDate(rangeFrom);
+      setBookDate(from);
     } catch (err) {
       setMessage(err instanceof Error ? err.message : "Failed to apply date filter");
     } finally {
@@ -901,13 +994,12 @@ export function CashBookApp({
             onApproveDay={approve}
             onUnlockDay={unlock}
             onRangeFromChange={(date) => {
-              setRangeFrom(date);
-              setRangeTo(date);
+              void applyDateRange(date, date);
             }}
             onRangeToChange={(date) => {
-              setRangeTo(date < rangeFrom ? rangeFrom : date);
+              const to = date < rangeFrom ? rangeFrom : date;
+              void applyDateRange(rangeFrom, to);
             }}
-            onApplyRange={() => void applyDateRange()}
             onClearRange={() => void clearDateRange()}
             onUpdateOpeningBalance={async (amount) => {
               const { error } = await supabase
@@ -933,15 +1025,12 @@ export function CashBookApp({
             }}
             onAddVoucher={async (input) => {
               const sheetDate = await placeOnSheet(input.entry_date || bookDate);
-              const { error } = await supabase.from("vouchers").insert({
-                book_date: sheetDate,
-                entry_date: sheetDate,
+              await createVoucherWithOptionalPhoto({
+                sheetDate,
                 description: input.description,
                 remarks: input.remarks,
                 amount: input.amount,
-                created_by: currentProfile.id,
               });
-              if (error) throw error;
               await afterEntrySaved(sheetDate);
             }}
             onUpdateReceipt={async (id, input) => {
@@ -983,6 +1072,12 @@ export function CashBookApp({
             onDeleteVoucher={async (id) => {
               const { error } = await supabase.from("vouchers").delete().eq("id", id);
               if (error) throw error;
+              setVoucherPhotoFlags((prev) => {
+                if (!prev[id]) return prev;
+                const next = { ...prev };
+                delete next[id];
+                return next;
+              });
               await supabase.rpc("recompute_opening_balances_from", { p_from: bookDate });
               await refresh(bookDate);
             }}
@@ -1032,18 +1127,17 @@ export function CashBookApp({
               isAccounts
                 ? undefined
                 : (date) => {
-                    setRangeFrom(date);
-                    setRangeTo(date);
+                    void applyDateRange(date, date);
                   }
             }
             onRangeToChange={
               isAccounts
                 ? undefined
                 : (date) => {
-                    setRangeTo(date < rangeFrom ? rangeFrom : date);
+                    const to = date < rangeFrom ? rangeFrom : date;
+                    void applyDateRange(rangeFrom, to);
                   }
             }
-            onApplyRange={isAccounts ? undefined : () => void applyDateRange()}
             onClearRange={() => void clearDateRange()}
             recoverableAdvances={recoverableAdvances}
             onUpdateOpeningBalance={async (amount) => {
@@ -1164,18 +1258,17 @@ export function CashBookApp({
               isAccounts
                 ? undefined
                 : (date) => {
-                    setRangeFrom(date);
-                    setRangeTo(date);
+                    void applyDateRange(date, date);
                   }
             }
             onRangeToChange={
               isAccounts
                 ? undefined
                 : (date) => {
-                    setRangeTo(date < rangeFrom ? rangeFrom : date);
+                    const to = date < rangeFrom ? rangeFrom : date;
+                    void applyDateRange(rangeFrom, to);
                   }
             }
-            onApplyRange={isAccounts ? undefined : () => void applyDateRange()}
             onClearRange={() => void clearDateRange()}
             onUnlockEntry={async (id) => {
               if (!dayOpen) {
@@ -1199,19 +1292,20 @@ export function CashBookApp({
               amount: Number(v.amount),
               editable_until: v.editable_until,
               created_by_name: nameFor(v.created_by),
+              photo_path:
+                v.photo_path || (voucherPhotoFlags[v.id] ? `${v.created_by}/${v.id}.jpg` : null),
             }))}
+            onViewPhoto={(row) => openVoucherPhoto(row)}
             onAdd={async (input) => {
               const sheetDate = await placeOnSheet(
                 isAccounts ? today : input.entry_date || bookDate,
               );
-              const { error } = await supabase.from("vouchers").insert({
-                book_date: sheetDate,
-                entry_date: sheetDate,
+              await createVoucherWithOptionalPhoto({
+                sheetDate,
                 description: input.description,
                 amount: input.amount,
-                created_by: currentProfile.id,
+                photoFile: input.photoFile,
               });
-              if (error) throw error;
               await afterEntrySaved(sheetDate);
             }}
             onUpdate={async (id, input) => {
@@ -1233,6 +1327,12 @@ export function CashBookApp({
             onDelete={async (id) => {
               const { error } = await supabase.from("vouchers").delete().eq("id", id);
               if (error) throw error;
+              setVoucherPhotoFlags((prev) => {
+                if (!prev[id]) return prev;
+                const next = { ...prev };
+                delete next[id];
+                return next;
+              });
               await supabase.rpc("recompute_opening_balances_from", { p_from: bookDate });
               await refresh(bookDate);
             }}
@@ -1441,7 +1541,7 @@ export function CashBookApp({
           </div>
           <div>
             <p className="text-xs uppercase tracking-wide" style={{ color: "var(--ink-muted)" }}>
-              Advances out
+              Total advance
             </p>
             <p className="mt-1 text-2xl font-semibold" style={{ fontFamily: "var(--font-display)", color: "var(--danger)" }}>
               {formatMoney(advanceOutTotal)}
@@ -1504,6 +1604,16 @@ export function CashBookApp({
             sessionStorage.setItem(approvedNoticeKey(bookDate), "1");
             setShowApprovedNotice(false);
           }}
+        />
+      ) : null}
+
+      {photoReview ? (
+        <VoucherPhotoModal
+          title={photoReview.title}
+          imageUrl={photoReview.url}
+          loading={photoReview.loading}
+          error={photoReview.error}
+          onClose={() => setPhotoReview(null)}
         />
       ) : null}
       </div>

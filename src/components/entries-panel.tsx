@@ -9,6 +9,10 @@ import {
   formatMoney,
   remainingEditMs,
 } from "@/lib/dates";
+import {
+  VOUCHER_PHOTO_ACCEPT,
+  formatBytes,
+} from "@/lib/compress-image";
 import type { Advance, AdvanceKind, DayStatus } from "@/lib/types";
 
 export type AdvancePick = Pick<
@@ -24,6 +28,7 @@ export type EntryRow = {
   amount: number;
   editable_until: string;
   created_by_name?: string;
+  photo_path?: string | null;
 };
 
 type Props = {
@@ -60,7 +65,6 @@ type Props = {
   onSearchDateChange?: (date: string) => void;
   onRangeFromChange?: (date: string) => void;
   onRangeToChange?: (date: string) => void;
-  onApplyRange?: () => void;
   onClearRange?: () => void;
   onUpdateOpeningBalance?: (amount: number) => Promise<void>;
   onUnlockEntry?: (id: string) => Promise<void>;
@@ -71,12 +75,15 @@ type Props = {
     amount: number;
     entry_date: string;
     advance_id?: string;
+    photoFile?: File | null;
   }) => Promise<void>;
   onUpdate: (
     id: string,
     input: { description: string; amount: number; entry_date: string },
   ) => Promise<void>;
   onDelete: (id: string) => Promise<void>;
+  /** Open voucher bill photo for review (Boss / shared ledger). */
+  onViewPhoto?: (row: EntryRow) => void | Promise<void>;
 };
 
 function detectAdvanceKindFromDescription(text: string): AdvanceKind | null {
@@ -161,6 +168,30 @@ function MoreIcon() {
   );
 }
 
+function PhotoIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <rect
+        x="3"
+        y="5"
+        width="18"
+        height="14"
+        rx="2"
+        stroke="currentColor"
+        strokeWidth="1.75"
+      />
+      <circle cx="9" cy="10" r="1.75" fill="currentColor" />
+      <path
+        d="M7 17l3.2-3.5a1 1 0 011.4 0L14 16l1.4-1.4a1 1 0 011.4 0L19 17"
+        stroke="currentColor"
+        strokeWidth="1.75"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
 export function EntriesPanel({
   kind,
   title,
@@ -188,7 +219,6 @@ export function EntriesPanel({
   onSearchDateChange,
   onRangeFromChange,
   onRangeToChange,
-  onApplyRange,
   onClearRange,
   onUpdateOpeningBalance,
   onUnlockEntry,
@@ -196,15 +226,11 @@ export function EntriesPanel({
   onAdd,
   onUpdate,
   onDelete,
+  onViewPhoto,
 }: Props) {
   const showDateSearch = Boolean(onSearchDateChange && rangeFrom);
   const showDateRange = Boolean(
-    !onSearchDateChange &&
-      onRangeFromChange &&
-      onRangeToChange &&
-      onApplyRange &&
-      rangeFrom &&
-      rangeTo,
+    !onSearchDateChange && onRangeFromChange && onRangeToChange && rangeFrom && rangeTo,
   );
   const showOpeningBalance = kind === "receipt" && openingBalance !== undefined;
   const openingAmount = Number(openingBalance ?? 0);
@@ -213,6 +239,7 @@ export function EntriesPanel({
   const [amount, setAmount] = useState("");
   const [entryDate, setEntryDate] = useState(bookDate);
   const [advanceId, setAdvanceId] = useState("");
+  const [photoFile, setPhotoFile] = useState<File | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editingOpening, setEditingOpening] = useState(false);
   const [openingDraft, setOpeningDraft] = useState("");
@@ -220,6 +247,7 @@ export function EntriesPanel({
   const [showForm, setShowForm] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const photoInputRef = useRef<HTMLInputElement>(null);
   const [menuOpenId, setMenuOpenId] = useState<string | null>(null);
   const [menuPos, setMenuPos] = useState<{ top: number; right: number } | null>(null);
   const [printVoucher, setPrintVoucher] = useState<VoucherPrintData | null>(null);
@@ -243,10 +271,11 @@ export function EntriesPanel({
 
   useEffect(() => {
     if (!menuOpenId) return;
+    const openId = menuOpenId;
     function onPointerDown(e: MouseEvent) {
       const target = e.target as Node;
       if (menuPanelRef.current?.contains(target)) return;
-      const btn = menuButtonRefs.current[menuOpenId];
+      const btn = menuButtonRefs.current[openId];
       if (btn?.contains(target)) return;
       setMenuOpenId(null);
       setMenuPos(null);
@@ -332,7 +361,24 @@ export function EntriesPanel({
   const filteredRows = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
     if (!q) return rows;
-    return rows.filter((row) => row.description.toLowerCase().includes(q));
+    const qDigits = q.replace(/[^0-9.]/g, "");
+    return rows.filter((row) => {
+      const amountStr = String(row.amount);
+      const amountFormatted = formatMoney(row.amount).toLowerCase();
+      const haystack = [
+        row.number,
+        row.description,
+        row.created_by_name ?? "",
+        amountStr,
+        amountFormatted,
+      ]
+        .join(" ")
+        .toLowerCase();
+      if (haystack.includes(q)) return true;
+      // Amount match without commas/currency (e.g. "1227" → 1227.00)
+      if (qDigits && amountStr.replace(/[^0-9.]/g, "").includes(qDigits)) return true;
+      return false;
+    });
   }, [rows, searchQuery]);
 
   const total = useMemo(() => {
@@ -438,10 +484,13 @@ export function EntriesPanel({
         amount: Number(amount),
         entry_date: dateValue,
         advance_id: matchedAdvanceKind && advanceId ? advanceId : undefined,
+        photoFile: kind === "voucher" ? photoFile : undefined,
       });
       setDescription("");
       setAmount("");
       setAdvanceId("");
+      setPhotoFile(null);
+      if (photoInputRef.current) photoInputRef.current.value = "";
       setEntryDate(lockedEntryDate || bookDate);
       // Keep form open for fast entry; jump back to description after date stays
       window.setTimeout(() => descriptionRef.current?.focus(), 0);
@@ -499,6 +548,8 @@ export function EntriesPanel({
     setDescription("");
     setAmount("");
     setAdvanceId("");
+    setPhotoFile(null);
+    if (photoInputRef.current) photoInputRef.current.value = "";
     setEntryDate(bookDate);
     setError(null);
   }
@@ -520,6 +571,8 @@ export function EntriesPanel({
                 setDescription("");
                 setAmount("");
                 setAdvanceId("");
+                setPhotoFile(null);
+                if (photoInputRef.current) photoInputRef.current.value = "";
                 setEntryDate(lockedEntryDate || bookDate);
                 setError(null);
               }}
@@ -553,8 +606,8 @@ export function EntriesPanel({
             type="search"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Description…"
-            className="min-w-[10rem] rounded-md border px-3 py-2 text-sm"
+            placeholder="Number, description, amount, user…"
+            className="min-w-[14rem] rounded-md border px-3 py-2 text-sm"
             style={{ borderColor: "var(--line)", background: "#fff", color: "var(--ink)" }}
           />
         </label>
@@ -629,17 +682,6 @@ export function EntriesPanel({
                 style={{ borderColor: "var(--line)", background: "#fff", color: "var(--ink)" }}
               />
             </label>
-            {!dateRangeLocked ? (
-              <button
-                type="button"
-                disabled={dayActionBusy}
-                onClick={() => onApplyRange?.()}
-                className="rounded-md px-3 py-2 text-sm font-semibold text-white disabled:opacity-60"
-                style={{ background: "var(--accent)" }}
-              >
-                Apply
-              </button>
-            ) : null}
             {rangeActive && onClearRange && !dateRangeLocked ? (
               <button
                 type="button"
@@ -798,6 +840,31 @@ export function EntriesPanel({
               style={{ borderColor: "var(--line)", color: "var(--ink)" }}
             />
           </label>
+          {kind === "voucher" && !editingId ? (
+            <label
+              className="flex flex-col gap-1 text-xs md:col-span-2"
+              style={{ color: "var(--ink-muted)" }}
+            >
+              Bill photo (optional — for Boss review)
+              <input
+                ref={photoInputRef}
+                type="file"
+                accept={VOUCHER_PHOTO_ACCEPT}
+                capture="environment"
+                onChange={(e) => {
+                  const file = e.target.files?.[0] ?? null;
+                  setPhotoFile(file);
+                }}
+                className="rounded-md border px-3 py-2 text-sm file:mr-3 file:rounded-md file:border-0 file:bg-[var(--accent-soft)] file:px-3 file:py-1.5 file:text-xs file:font-semibold"
+                style={{ borderColor: "var(--line)", color: "var(--ink)", background: "#fff" }}
+              />
+              <span className="text-[11px]" style={{ color: "var(--ink-muted)" }}>
+                {photoFile
+                  ? `Selected ${photoFile.name} (${formatBytes(photoFile.size)}) — compressed on save`
+                  : "Photo can only be added when creating the voucher. Compressed to ~80 KB."}
+              </span>
+            </label>
+          ) : null}
           <div className="flex items-end gap-2">
             <button
               type="submit"
@@ -934,7 +1001,7 @@ export function EntriesPanel({
                   style={{ color: "var(--ink-muted)" }}
                 >
                   {searchQuery.trim()
-                    ? "No matching descriptions."
+                    ? "No matching entries."
                     : "No entries yet."}
                 </td>
               </tr>
@@ -1016,7 +1083,19 @@ export function EntriesPanel({
                     ) : null}
                     <td className="w-0 px-2 py-2.5 whitespace-nowrap">
                       {kind === "voucher" ? (
-                        <div className="flex items-center justify-end">
+                        <div className="flex items-center justify-end gap-0.5">
+                          {row.photo_path && onViewPhoto ? (
+                            <button
+                              type="button"
+                              aria-label={`View bill photo for ${row.number}`}
+                              title="View bill photo"
+                              className="inline-flex h-8 w-8 items-center justify-center rounded-md transition hover:bg-[var(--accent-soft)]"
+                              style={{ color: "var(--accent)" }}
+                              onClick={() => void onViewPhoto(row)}
+                            >
+                              <PhotoIcon />
+                            </button>
+                          ) : null}
                           <button
                             type="button"
                             ref={(el) => {
@@ -1045,6 +1124,21 @@ export function EntriesPanel({
                                     background: "var(--panel)",
                                   }}
                                 >
+                                  {row.photo_path && onViewPhoto ? (
+                                    <button
+                                      type="button"
+                                      role="menuitem"
+                                      className="block w-full px-3 py-2.5 text-left text-sm hover:bg-[var(--bg-deep)]"
+                                      onMouseDown={(e) => e.preventDefault()}
+                                      onClick={() => {
+                                        setMenuOpenId(null);
+                                        setMenuPos(null);
+                                        void onViewPhoto(row);
+                                      }}
+                                    >
+                                      View bill photo
+                                    </button>
+                                  ) : null}
                                   <button
                                     type="button"
                                     role="menuitem"

@@ -28,7 +28,6 @@ type Props = {
   onUnlockDay?: () => void;
   onRangeFromChange: (date: string) => void;
   onRangeToChange: (date: string) => void;
-  onApplyRange: () => void;
   onClearRange: () => void;
   onUpdateOpeningBalance: (amount: number) => Promise<void>;
   onAddReceipt: (input: {
@@ -147,7 +146,6 @@ export function StatementPanel({
   onUnlockDay,
   onRangeFromChange,
   onRangeToChange,
-  onApplyRange,
   onClearRange,
   onUpdateOpeningBalance,
   onAddReceipt,
@@ -594,27 +592,22 @@ export function StatementPanel({
           <input
             type="date"
             value={rangeFrom}
+            disabled={dayActionBusy}
             onChange={(e) => onRangeFromChange(e.target.value)}
-            className="rounded-lg border px-2.5 py-1.5 text-sm"
+            className="rounded-lg border px-2.5 py-1.5 text-sm disabled:opacity-60"
             style={{ borderColor: "var(--line)", color: "var(--ink)", background: "#fff" }}
           />
           <span>—</span>
           <input
             type="date"
             value={rangeTo}
+            min={rangeFrom}
+            disabled={dayActionBusy}
             onChange={(e) => onRangeToChange(e.target.value)}
-            className="rounded-lg border px-2.5 py-1.5 text-sm"
+            className="rounded-lg border px-2.5 py-1.5 text-sm disabled:opacity-60"
             style={{ borderColor: "var(--line)", color: "var(--ink)", background: "#fff" }}
           />
         </label>
-        <button
-          type="button"
-          onClick={onApplyRange}
-          className="rounded-lg px-3.5 py-1.5 text-sm font-semibold text-white"
-          style={{ background: "var(--accent)" }}
-        >
-          Apply
-        </button>
         {rangeActive ? (
           <button
             type="button"

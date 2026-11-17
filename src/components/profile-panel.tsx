@@ -2,6 +2,10 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import {
+  getPasswordRequirements,
+  validatePassword,
+} from "@/lib/auth/password-policy";
 import { createClient } from "@/lib/supabase/client";
 import type { Profile } from "@/lib/types";
 
@@ -23,9 +27,12 @@ function initials(name: string) {
 export function ProfilePanel({ profile, onProfileUpdated, onDataWiped }: Props) {
   const router = useRouter();
   const [fullName, setFullName] = useState(profile.full_name || "");
+  const [currentPassword, setCurrentPassword] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [busy, setBusy] = useState(false);
+  const passwordReqs = getPasswordRequirements(password);
+  const passwordReady = passwordReqs.every((r) => r.met);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -147,8 +154,13 @@ export function ProfilePanel({ profile, onProfileUpdated, onDataWiped }: Props) 
     setMessage(null);
     try {
       const next = password.trim();
-      if (next.length < 8) {
-        throw new Error("Password must be at least 8 characters");
+      const current = currentPassword.trim();
+      if (!current) {
+        throw new Error("Current password is required");
+      }
+      const policyError = validatePassword(next);
+      if (policyError) {
+        throw new Error(policyError);
       }
       if (next !== confirmPassword.trim()) {
         throw new Error("Passwords do not match");
@@ -158,6 +170,7 @@ export function ProfilePanel({ profile, onProfileUpdated, onDataWiped }: Props) 
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          currentPassword: current,
           password: next,
         }),
       });
@@ -166,6 +179,7 @@ export function ProfilePanel({ profile, onProfileUpdated, onDataWiped }: Props) 
         throw new Error(body.error || "Failed to change password");
       }
 
+      setCurrentPassword("");
       setPassword("");
       setConfirmPassword("");
       setMessage("Password updated — sign in again with the new password");
@@ -269,9 +283,21 @@ export function ProfilePanel({ profile, onProfileUpdated, onDataWiped }: Props) 
                 Password
               </h2>
               <p className="mt-0.5 text-sm" style={{ color: "var(--ink-muted)" }}>
-                Choose a new password (at least 8 characters).
+                Confirm your current password, then set a strong new one.
               </p>
             </div>
+            <label className="flex flex-col gap-1.5 text-xs font-medium" style={{ color: "var(--ink-muted)" }}>
+              Current password
+              <input
+                type="password"
+                required
+                autoComplete="current-password"
+                value={currentPassword}
+                onChange={(e) => setCurrentPassword(e.target.value)}
+                className="rounded-lg border px-3 py-2.5 text-sm outline-none"
+                style={{ borderColor: "var(--line)", color: "var(--ink)", background: "#fff" }}
+              />
+            </label>
             <label className="flex flex-col gap-1.5 text-xs font-medium" style={{ color: "var(--ink-muted)" }}>
               New password
               <input
@@ -285,6 +311,15 @@ export function ProfilePanel({ profile, onProfileUpdated, onDataWiped }: Props) 
                 style={{ borderColor: "var(--line)", color: "var(--ink)", background: "#fff" }}
               />
             </label>
+            {password ? (
+              <ul className="grid gap-1 text-xs" style={{ color: "var(--ink-muted)" }}>
+                {passwordReqs.map((req) => (
+                  <li key={req.id}>
+                    {req.met ? "✓" : "○"} {req.label}
+                  </li>
+                ))}
+              </ul>
+            ) : null}
             <label className="flex flex-col gap-1.5 text-xs font-medium" style={{ color: "var(--ink-muted)" }}>
               Confirm password
               <input
@@ -301,7 +336,7 @@ export function ProfilePanel({ profile, onProfileUpdated, onDataWiped }: Props) 
             <div>
               <button
                 type="submit"
-                disabled={busy || wiping}
+                disabled={busy || wiping || !passwordReady || !currentPassword.trim()}
                 className="rounded-lg px-4 py-2.5 text-sm font-semibold text-white transition disabled:opacity-60"
                 style={{ background: "var(--accent)" }}
               >
