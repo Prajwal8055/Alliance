@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { AccountMenu, type AppNotification } from "@/components/account-menu";
 import { ActivityLog } from "@/components/activity-log";
@@ -10,6 +10,7 @@ import { EntriesPanel } from "@/components/entries-panel";
 import { NoticeModal } from "@/components/notice-modal";
 import { ProfilePanel } from "@/components/profile-panel";
 import { StatementPanel } from "@/components/statement-panel";
+import { UkSquarePanel } from "@/components/uk-square-panel";
 import { UsersPanel } from "@/components/users-panel";
 import { VoucherPhotoModal } from "@/components/voucher-photo-modal";
 import {
@@ -42,7 +43,8 @@ type Tab =
   | "advances"
   | "activity"
   | "users"
-  | "profile";
+  | "profile"
+  | "uk-square";
 
 type Props = {
   initialDate: string;
@@ -118,10 +120,17 @@ export function CashBookApp({
   const [voucherPhotoFlags, setVoucherPhotoFlags] = useState<Record<string, true>>(
     {},
   );
+  const [titleHoldProgress, setTitleHoldProgress] = useState(0);
+  const [titleHolding, setTitleHolding] = useState(false);
+  const titleHoldStartRef = useRef<number | null>(null);
+  const titleHoldFrameRef = useRef<number | null>(null);
+  const titleHoldDoneRef = useRef(false);
+  const TITLE_HOLD_MS = 3000;
 
   const isBoss = currentProfile.role === "boss";
   const isHr = currentProfile.role === "hr";
   const isAccounts = currentProfile.role === "accounts";
+  const canOpenUkSquare = isBoss || isAccounts;
   const today = todayBookDate();
   const isToday = bookDate === today;
   // Accounts may only add/edit on the current cash-book day; Boss/HR can work any open day.
@@ -415,6 +424,7 @@ export function CashBookApp({
 
   // Boss uses combined statement; HR lands on Advances; Accounts never stays on Advances/statement.
   useEffect(() => {
+    if (tab === "uk-square") return;
     if (isBoss && (tab === "receipts" || tab === "vouchers")) {
       setTab("statement");
     } else if (isHr && (tab === "receipts" || tab === "vouchers" || tab === "statement")) {
@@ -422,7 +432,56 @@ export function CashBookApp({
     } else if (isAccounts && (tab === "advances" || tab === "statement")) {
       setTab("receipts");
     }
-  }, [isHr, isAccounts, tab]);
+  }, [isHr, isAccounts, isBoss, tab]);
+
+  useEffect(() => {
+    return () => {
+      if (titleHoldFrameRef.current !== null) {
+        cancelAnimationFrame(titleHoldFrameRef.current);
+      }
+    };
+  }, []);
+
+  function clearTitleHold() {
+    if (titleHoldFrameRef.current !== null) {
+      cancelAnimationFrame(titleHoldFrameRef.current);
+      titleHoldFrameRef.current = null;
+    }
+    titleHoldStartRef.current = null;
+    setTitleHolding(false);
+    setTitleHoldProgress(0);
+  }
+
+  function tickTitleHold(now: number) {
+    const start = titleHoldStartRef.current;
+    if (start === null) return;
+    const progress = Math.min(1, (now - start) / TITLE_HOLD_MS);
+    setTitleHoldProgress(progress);
+    if (progress >= 1) {
+      if (!titleHoldDoneRef.current) {
+        titleHoldDoneRef.current = true;
+        clearTitleHold();
+        setTab("uk-square");
+      }
+      return;
+    }
+    titleHoldFrameRef.current = requestAnimationFrame(tickTitleHold);
+  }
+
+  function startTitleHold(e: React.PointerEvent) {
+    if (!isAccounts || tab === "uk-square") return;
+    e.preventDefault();
+    titleHoldDoneRef.current = false;
+    titleHoldStartRef.current = performance.now();
+    setTitleHolding(true);
+    setTitleHoldProgress(0);
+    titleHoldFrameRef.current = requestAnimationFrame(tickTitleHold);
+  }
+
+  function endTitleHold() {
+    if (titleHoldDoneRef.current) return;
+    clearTitleHold();
+  }
 
   // Flip to pending_approval at 6:30 PM without needing a full reload.
   useEffect(() => {
@@ -928,11 +987,40 @@ export function CashBookApp({
       <div className="mx-auto flex w-full max-w-[1400px] flex-1 flex-col px-4 py-6 sm:px-6">
         <header className="flex flex-wrap items-end justify-between gap-4">
           <div>
-            <h1 className="text-[30px] font-bold tracking-tight" style={{ color: "var(--ink)" }}>
-              Cash Book
+            <h1
+              className="relative inline-flex overflow-hidden rounded-lg text-[30px] font-bold tracking-tight select-none touch-none"
+              style={{ color: "var(--ink)" }}
+              onPointerDown={startTitleHold}
+              onPointerUp={endTitleHold}
+              onPointerLeave={endTitleHold}
+              onPointerCancel={endTitleHold}
+              onContextMenu={(e) => {
+                if (isAccounts) e.preventDefault();
+              }}
+              title={isAccounts && tab !== "uk-square" ? "Hold to open UK Square" : undefined}
+            >
+              {titleHolding ? (
+                <span
+                  className="absolute inset-y-0 left-0"
+                  style={{
+                    width: `${titleHoldProgress * 100}%`,
+                    background: "var(--accent-soft)",
+                  }}
+                  aria-hidden
+                />
+              ) : null}
+              <span className="relative z-10 px-0.5">
+                {tab === "uk-square"
+                  ? "UK Square"
+                  : titleHolding
+                    ? `Hold… ${Math.ceil((1 - titleHoldProgress) * 3)}s`
+                    : "Cash Book"}
+              </span>
             </h1>
             <p className="mt-1 text-[13px]" style={{ color: "var(--ink-muted)" }}>
-              Receipts and vouchers together like a bank statement.
+              {tab === "uk-square"
+                ? "U K Square sites booking details"
+                : "Receipts and vouchers together like a bank statement."}
             </p>
           </div>
           {navTabs.length > 0 ? (
@@ -971,6 +1059,14 @@ export function CashBookApp({
           </p>
         ) : null}
 
+        {tab === "uk-square" && canOpenUkSquare ? (
+          <div className="mt-5">
+            <UkSquarePanel
+              onBack={() => setTab(isBoss ? "statement" : "receipts")}
+            />
+          </div>
+        ) : null}
+
         {tab === "statement" && isBoss ? (
           <div className="mt-5">
             <StatementPanel
@@ -1001,6 +1097,7 @@ export function CashBookApp({
               void applyDateRange(rangeFrom, to);
             }}
             onClearRange={() => void clearDateRange()}
+            onOpenUkSquare={isBoss ? () => setTab("uk-square") : undefined}
             onUpdateOpeningBalance={async (amount) => {
               const { error } = await supabase
                 .from("cash_book_days")

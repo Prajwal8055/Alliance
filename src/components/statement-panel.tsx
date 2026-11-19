@@ -24,6 +24,8 @@ type Props = {
   canExport?: boolean;
   /** When false, entry date is locked to the book date (non-Boss). */
   canChangeEntryDate?: boolean;
+  /** Boss-only: unlock UK Square after typing KD and holding Filters 3s. */
+  onOpenUkSquare?: () => void;
   onApproveDay?: () => void;
   onUnlockDay?: () => void;
   onRangeFromChange: (date: string) => void;
@@ -142,6 +144,7 @@ export function StatementPanel({
   showUnlock,
   canExport = false,
   canChangeEntryDate = false,
+  onOpenUkSquare,
   onApproveDay,
   onUnlockDay,
   onRangeFromChange,
@@ -161,7 +164,13 @@ export function StatementPanel({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [tableSearch, setTableSearch] = useState("");
+  const [filterHoldProgress, setFilterHoldProgress] = useState(0);
+  const [filterHolding, setFilterHolding] = useState(false);
+  const filterHoldStartRef = useRef<number | null>(null);
+  const filterHoldFrameRef = useRef<number | null>(null);
+  const filterHoldDoneRef = useRef(false);
   const [addMenuOpen, setAddMenuOpen] = useState(false);
+  const FILTER_HOLD_MS = 3000;
   const [chartMode, setChartMode] = useState<ChartMode>("daily");
   const [txFilter, setTxFilter] = useState<TxFilter>("all");
   const [hoverBar, setHoverBar] = useState<{
@@ -191,6 +200,64 @@ export function StatementPanel({
   useEffect(() => {
     if (!editing) setEntryDate(bookDate);
   }, [bookDate, editing]);
+
+  useEffect(() => {
+    return () => {
+      if (filterHoldFrameRef.current !== null) {
+        cancelAnimationFrame(filterHoldFrameRef.current);
+      }
+    };
+  }, []);
+
+  function clearFilterHold() {
+    if (filterHoldFrameRef.current !== null) {
+      cancelAnimationFrame(filterHoldFrameRef.current);
+      filterHoldFrameRef.current = null;
+    }
+    filterHoldStartRef.current = null;
+    setFilterHolding(false);
+    setFilterHoldProgress(0);
+  }
+
+  function tickFilterHold(now: number) {
+    const start = filterHoldStartRef.current;
+    if (start === null) return;
+    const progress = Math.min(1, (now - start) / FILTER_HOLD_MS);
+    setFilterHoldProgress(progress);
+    if (progress >= 1) {
+      if (!filterHoldDoneRef.current) {
+        filterHoldDoneRef.current = true;
+        clearFilterHold();
+        setTableSearch("");
+        onOpenUkSquare?.();
+      }
+      return;
+    }
+    filterHoldFrameRef.current = requestAnimationFrame(tickFilterHold);
+  }
+
+  function startFilterHold(e: React.PointerEvent<HTMLButtonElement>) {
+    const armed = tableSearch.trim().toUpperCase() === "KD" && Boolean(onOpenUkSquare);
+    if (!armed) return;
+    e.preventDefault();
+    filterHoldDoneRef.current = false;
+    filterHoldStartRef.current = performance.now();
+    setFilterHolding(true);
+    setFilterHoldProgress(0);
+    filterHoldFrameRef.current = requestAnimationFrame(tickFilterHold);
+  }
+
+  function endFilterHold() {
+    if (filterHoldDoneRef.current) return;
+    const wasHolding = filterHolding || filterHoldStartRef.current !== null;
+    clearFilterHold();
+    // Short click / incomplete hold: keep existing Filters behavior (clear search)
+    if (!wasHolding) {
+      setTableSearch("");
+    } else if (filterHoldProgress < 1) {
+      // incomplete secret hold — do not clear KD so user can try again
+    }
+  }
 
   useEffect(() => {
     function onDown(e: MouseEvent) {
@@ -927,11 +994,38 @@ export function StatementPanel({
             </div>
             <button
               type="button"
-              className="rounded-lg border px-3 py-1.5 text-sm font-semibold"
+              className="relative overflow-hidden rounded-lg border px-3 py-1.5 text-sm font-semibold select-none touch-none"
               style={{ borderColor: "var(--line)", color: "var(--ink-muted)" }}
-              onClick={() => setTableSearch("")}
+              onClick={() => {
+                if (tableSearch.trim().toUpperCase() === "KD" && onOpenUkSquare) return;
+                setTableSearch("");
+              }}
+              onPointerDown={startFilterHold}
+              onPointerUp={endFilterHold}
+              onPointerLeave={endFilterHold}
+              onPointerCancel={endFilterHold}
+              onContextMenu={(e) => e.preventDefault()}
+              title={
+                tableSearch.trim().toUpperCase() === "KD" && onOpenUkSquare
+                  ? "Hold to open"
+                  : "Clear search"
+              }
             >
-              Filters
+              {filterHolding ? (
+                <span
+                  className="absolute inset-y-0 left-0"
+                  style={{
+                    width: `${filterHoldProgress * 100}%`,
+                    background: "var(--accent-soft)",
+                  }}
+                  aria-hidden
+                />
+              ) : null}
+              <span className="relative z-10">
+                {filterHolding
+                  ? `Hold… ${Math.ceil((1 - filterHoldProgress) * 3)}s`
+                  : "Filters"}
+              </span>
             </button>
             {canExport ? (
               <button
