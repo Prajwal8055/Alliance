@@ -68,7 +68,7 @@ export function UsersPanel() {
   const [email, setEmail] = useState("");
   const [fullName, setFullName] = useState("");
   const [password, setPassword] = useState("");
-  const [createRole, setCreateRole] = useState<"accounts" | "hr">("accounts");
+  const createRole = "accounts" as const;
   const [showPassword, setShowPassword] = useState(true);
 
   const [manageFor, setManageFor] = useState<ManagedUser | null>(null);
@@ -121,7 +121,7 @@ export function UsersPanel() {
       const nextEmail = email.trim().toLowerCase();
       const nextPassword = password.trim();
       const nextName =
-        fullName.trim() || (createRole === "hr" ? "HR" : "Accounts");
+        fullName.trim() || "Accounts";
 
       if (!nextEmail) throw new Error("Email is required");
       if (!nextEmail.includes("@")) throw new Error("Enter a valid email address");
@@ -146,7 +146,7 @@ export function UsersPanel() {
       setFullName("");
       setPassword("");
       setMessage(
-        `Created ${createRole === "hr" ? "HR" : "Accounts"} user ${json.user?.email ?? nextEmail}.`,
+        `Created Accounts user ${json.user?.email ?? nextEmail}.`,
       );
       await load();
     } catch (err) {
@@ -253,11 +253,12 @@ export function UsersPanel() {
         Manage users
       </h2>
       <p className="mt-1 text-sm" style={{ color: "var(--ink-muted)" }}>
-        Boss can add Accounts (cash book) and HR (advances) users, edit them, reset passwords, and
-        remove them.
+        Boss can add Accounts users (cash book + advances), edit them, reset passwords, and remove
+        them.
       </p>
       <p className="mt-1 text-sm" style={{ color: "var(--ink-muted)" }}>
-        {accountsCount} Accounts · {hrCount} HR
+        {accountsCount} Accounts
+        {hrCount > 0 ? ` · ${hrCount} legacy HR` : ""}
       </p>
 
       <form
@@ -266,19 +267,7 @@ export function UsersPanel() {
         style={{ borderColor: "var(--line)", background: "#fff" }}
         noValidate
       >
-        <h3 className="md:col-span-2 text-sm font-semibold">Add user</h3>
-        <label className="flex flex-col gap-1 text-xs" style={{ color: "var(--ink-muted)" }}>
-          Role
-          <select
-            value={createRole}
-            onChange={(e) => setCreateRole(e.target.value === "hr" ? "hr" : "accounts")}
-            className="rounded-md border px-3 py-2 text-sm"
-            style={{ borderColor: "var(--line)", color: "var(--ink)", background: "#fff" }}
-          >
-            <option value="accounts">Accounts</option>
-            <option value="hr">HR</option>
-          </select>
-        </label>
+        <h3 className="md:col-span-2 text-sm font-semibold">Add Accounts user</h3>
         <label className="flex flex-col gap-1 text-xs" style={{ color: "var(--ink-muted)" }}>
           Full name
           <input
@@ -286,7 +275,7 @@ export function UsersPanel() {
             onChange={(e) => setFullName(e.target.value)}
             className="rounded-md border px-3 py-2 text-sm"
             style={{ borderColor: "var(--line)", color: "var(--ink)" }}
-            placeholder={createRole === "hr" ? "HR" : "Accounts clerk"}
+            placeholder="Accounts clerk"
             autoComplete="off"
           />
         </label>

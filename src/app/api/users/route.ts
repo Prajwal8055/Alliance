@@ -65,9 +65,8 @@ export async function POST(request: Request) {
 
   const email = body.email?.trim().toLowerCase();
   const password = (body.password ?? "").trim();
-  const role = body.role === "hr" ? "hr" : "accounts";
-  const fullName =
-    body.full_name?.trim() || (role === "hr" ? "HR" : "Accounts");
+  const role = "accounts";
+  const fullName = body.full_name?.trim() || "Accounts";
 
   if (!email || !password) {
     return NextResponse.json(

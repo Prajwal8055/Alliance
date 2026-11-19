@@ -100,7 +100,7 @@ export function CashBookApp({
   const [logs, setLogs] = useState(initialLogs);
   const [currentProfile, setCurrentProfile] = useState(profile);
   const [tab, setTab] = useState<Tab>(() =>
-    profile.role === "boss" ? "statement" : profile.role === "hr" ? "advances" : "receipts",
+    profile.role === "boss" ? "statement" : "receipts",
   );
   const [showApproval, setShowApproval] = useState(false);
   const [showLowBalance, setShowLowBalance] = useState(false);
@@ -135,7 +135,7 @@ export function CashBookApp({
   const isToday = bookDate === today;
   // Accounts may only add/edit on the current cash-book day; Boss/HR can work any open day.
   const dayOpen =
-    day.status === "open" && !rangeActive && (isBoss || isHr || isToday);
+    day.status === "open" && !rangeActive && (isBoss || isToday);
   const timezone =
     process.env.NEXT_PUBLIC_CASHBOOK_TIMEZONE ?? "Asia/Kolkata";
 
@@ -422,14 +422,15 @@ export function CashBookApp({
     }
   }
 
-  // Boss uses combined statement; HR lands on Advances; Accounts never stays on Advances/statement.
+  // Boss uses combined statement; Accounts use receipts/vouchers/advances (not statement).
+  // Legacy HR users are treated like Accounts for navigation (no Advances ownership).
   useEffect(() => {
     if (tab === "uk-square") return;
     if (isBoss && (tab === "receipts" || tab === "vouchers")) {
       setTab("statement");
-    } else if (isHr && (tab === "receipts" || tab === "vouchers" || tab === "statement")) {
-      setTab("advances");
-    } else if (isAccounts && (tab === "advances" || tab === "statement")) {
+    } else if (isHr && (tab === "advances" || tab === "statement")) {
+      setTab("receipts");
+    } else if (isAccounts && tab === "statement") {
       setTab("receipts");
     }
   }, [isHr, isAccounts, isBoss, tab]);
@@ -858,7 +859,7 @@ export function CashBookApp({
         onClick: () => setTab(isBoss ? "statement" : "receipts"),
       });
     }
-    if ((isBoss || isHr) && pendingAdvances.length > 0) {
+    if (isBoss && pendingAdvances.length > 0) {
       items.push({
         id: "adv-pending",
         title: `${pendingAdvances.length} advance${pendingAdvances.length === 1 ? "" : "s"} pending`,
@@ -875,7 +876,6 @@ export function CashBookApp({
     closingBalance,
     pendingAdvances.length,
     isBoss,
-    isHr,
   ]);
 
   if (isProfileView || isUsersView || isActivityView) {
@@ -957,13 +957,13 @@ export function CashBookApp({
     [
       ...(isBoss
         ? ([["statement", "Cash Book"] as const] as const)
-        : !isHr
-          ? ([
-              ["receipts", "Receipts"] as const,
-              ["vouchers", "Voucher"] as const,
-            ] as const)
-          : []),
-      ...(isHr || isBoss ? ([["advances", "Advances"] as const] as const) : []),
+        : ([
+            ["receipts", "Receipts"] as const,
+            ["vouchers", "Voucher"] as const,
+          ] as const)),
+      ...(isAccounts || isBoss
+        ? ([["advances", "Advances"] as const] as const)
+        : []),
     ] as const
   );
 
@@ -1439,7 +1439,7 @@ export function CashBookApp({
       </div>
       ) : null}
 
-      {tab === "advances" ? (
+      {tab === "advances" && (isAccounts || isBoss) ? (
         <>
           <div
             className="mt-6 flex flex-wrap items-end gap-2 rounded-xl border px-3 py-2"
@@ -1543,11 +1543,13 @@ export function CashBookApp({
                 blockedNames={blockedNamesForKind(kind)}
                 knownNames={advanceKnownNames}
                 bookDate={bookDate}
-                canCreate={dayOpen || ((isHr || isBoss) && !rangeActive)}
-                isBoss={isHr || isBoss}
+                canCreate={(isAccounts || isBoss) && (dayOpen || (isBoss && !rangeActive))}
+                isBoss={isBoss}
                 busy={busy}
                 onAdd={async (input) => {
-                  const sheetDate = await placeOnSheet(input.entry_date || bookDate);
+                  const sheetDate = await placeOnSheet(
+                    isAccounts ? today : input.entry_date || bookDate,
+                  );
                   const { error } = await supabase.from("advances").insert({
                     book_date: sheetDate,
                     entry_date: sheetDate,
@@ -1578,7 +1580,7 @@ export function CashBookApp({
                 onRepay={async (id) => {
                   const { error } = await supabase.rpc("repay_advance", {
                     p_id: id,
-                    p_date: isHr || isBoss ? bookDate : today,
+                    p_date: isBoss ? bookDate : today,
                   });
                   if (error) throw error;
                   await supabase.rpc("recompute_opening_balances_from", { p_from: bookDate });
