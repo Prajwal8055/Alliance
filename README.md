@@ -1,6 +1,6 @@
-# Alliance Square Cash Book
+# Cash Book
 
-Daily cash book for Alliance Square: **Receipts** (cash in) and **Cash voucher** (cash out), with Boss approval, a 6:30 PM day close, a 10-minute edit window per entry, and a full change log.
+Daily cash book: **Receipts** (cash in) and **Cash voucher** (cash out), with Boss approval, a 6:30 PM day close, a 10-minute edit window per entry, and a full change log.
 
 ## Stack
 

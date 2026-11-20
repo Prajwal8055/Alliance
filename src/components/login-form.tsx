@@ -94,13 +94,7 @@ export function LoginForm() {
           />
           <div className="text-center">
             <p
-              className="text-sm tracking-[0.18em] uppercase"
-              style={{ color: "var(--accent)", fontFamily: "var(--font-body)" }}
-            >
-              Alliance Square
-            </p>
-            <p
-              className="mt-2 text-xl font-semibold"
+              className="text-xl font-semibold"
               style={{ fontFamily: "var(--font-display)", color: "var(--ink)" }}
             >
               Signing in…

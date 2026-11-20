@@ -1,4 +1,4 @@
--- Alliance Square Cash Book (safe to re-run)
+-- Cash Book (safe to re-run)
 -- Run in Supabase SQL Editor
 
 create extension if not exists "pgcrypto";

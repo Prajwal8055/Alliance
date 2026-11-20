@@ -9,8 +9,8 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
-  title: "Alliance Square Cash Book",
-  description: "Daily cash receipts and vouchers for Alliance Square",
+  title: "Cash Book",
+  description: "Daily cash receipts and vouchers",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {

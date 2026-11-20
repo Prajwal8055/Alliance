@@ -729,9 +729,9 @@ export function StatementPanel({
         ) : null}
       </div>
 
-      {/* Summary + chart */}
-      <div className="grid gap-4 xl:grid-cols-[1.15fr_1fr]">
-        <div className="grid gap-3">
+      {/* Summary + chart — minmax(0,…) so the chart cannot crush the balance cards on wide screens */}
+      <div className="grid gap-4 xl:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)]">
+        <div className="grid min-w-0 gap-3">
           <div
             className="relative overflow-hidden rounded-2xl p-5"
             style={{
@@ -745,14 +745,16 @@ export function StatementPanel({
               style={{ background: "#fff" }}
             />
             <div className="flex items-start justify-between gap-3">
-              <div>
-                <p className="text-[13px] font-medium opacity-85">Closing Balance</p>
-                <p className="mt-2 text-[34px] font-bold tabular-nums leading-none tracking-tight">
+              <div className="min-w-0">
+                <p className="text-[13px] font-medium" style={{ opacity: 0.85 }}>
+                  Closing Balance
+                </p>
+                <p className="mt-2 text-[28px] font-bold tabular-nums leading-none tracking-tight sm:text-[34px]">
                   {formatMoney(closing)}
                 </p>
               </div>
               <span
-                className="inline-flex h-10 w-10 items-center justify-center rounded-xl"
+                className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl"
                 style={{ background: "rgba(0,0,0,0.08)", color: "#000" }}
               >
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden>
@@ -767,7 +769,7 @@ export function StatementPanel({
               </span>
             </div>
             {closingDeltaPct != null ? (
-              <p className="mt-3 text-[13px] opacity-90">
+              <p className="mt-3 text-[13px]" style={{ opacity: 0.9 }}>
                 <span
                   className="mr-2 inline-flex rounded-full px-2 py-0.5 text-xs font-semibold"
                   style={{ background: "rgba(0,0,0,0.1)", color: "#000" }}
@@ -782,39 +784,39 @@ export function StatementPanel({
 
           <div className="grid grid-cols-2 gap-3">
             <div
-              className="rounded-2xl border p-4"
+              className="min-w-0 rounded-2xl border p-4"
               style={{ borderColor: "var(--line)", background: "var(--panel)", boxShadow: "var(--shadow)" }}
             >
-              <div className="flex items-center justify-between">
-                <p className="text-[13px] font-medium" style={{ color: "var(--ink-muted)" }}>
-                  {rangeActive ? "Period Receipts (Cr)" : "Today's Receipts (Cr)"}
+              <div className="flex items-start justify-between gap-2">
+                <p className="text-[13px] font-medium leading-snug" style={{ color: "var(--ink-muted)" }}>
+                  {rangeActive ? "Period receipts (Cr)" : "Today's receipts (Cr)"}
                 </p>
-                <span style={{ color: "var(--income)" }}>
+                <span className="mt-0.5 shrink-0" style={{ color: "var(--income)" }}>
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden>
                     <path d="M12 19V5M12 5l-5 5M12 5l5 5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
                   </svg>
                 </span>
               </div>
-              <p className="mt-3 text-[22px] font-bold tabular-nums" style={{ color: "var(--income)" }}>
+              <p className="mt-3 text-xl font-bold tabular-nums sm:text-[22px]" style={{ color: "var(--income)" }}>
                 {formatMoney(receiptTotal + advanceRepaidTotal)}
               </p>
             </div>
 
             <div
-              className="rounded-2xl border p-4"
+              className="min-w-0 rounded-2xl border p-4"
               style={{ borderColor: "var(--line)", background: "var(--panel)", boxShadow: "var(--shadow)" }}
             >
-              <div className="flex items-center justify-between">
-                <p className="text-[13px] font-medium" style={{ color: "var(--ink-muted)" }}>
-                  {rangeActive ? "Period Payments + Advances (Dr)" : "Today's Payments + Advances (Dr)"}
+              <div className="flex items-start justify-between gap-2">
+                <p className="text-[13px] font-medium leading-snug" style={{ color: "var(--ink-muted)" }}>
+                  {rangeActive ? "Period payments + advances (Dr)" : "Today's payments + advances (Dr)"}
                 </p>
-                <span style={{ color: "var(--danger)" }}>
+                <span className="mt-0.5 shrink-0" style={{ color: "var(--danger)" }}>
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden>
                     <path d="M12 5v14M12 19l-5-5M12 19l5-5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
                   </svg>
                 </span>
               </div>
-              <p className="mt-3 text-[22px] font-bold tabular-nums" style={{ color: "var(--danger)" }}>
+              <p className="mt-3 text-xl font-bold tabular-nums sm:text-[22px]" style={{ color: "var(--danger)" }}>
                 {formatMoney(voucherTotal + advanceOutTotal)}
               </p>
             </div>
@@ -822,7 +824,7 @@ export function StatementPanel({
         </div>
 
         <div
-          className="relative rounded-2xl border p-4"
+          className="relative min-w-0 rounded-2xl border p-4"
           style={{ borderColor: "var(--line)", background: "var(--panel)", boxShadow: "var(--shadow)" }}
         >
           <div className="mb-3 flex flex-wrap items-center justify-between gap-2">

@@ -1063,6 +1063,7 @@ export function CashBookApp({
           <div className="mt-5">
             <UkSquarePanel
               onBack={() => setTab(isBoss ? "statement" : "receipts")}
+              canAdd={isAccounts || isBoss}
             />
           </div>
         ) : null}
