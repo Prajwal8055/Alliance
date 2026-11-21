@@ -41,6 +41,14 @@ function parseMoney(raw: string): number | null {
   return Number.isFinite(n) && n >= 0 ? n : null;
 }
 
+function todayIso(): string {
+  const now = new Date();
+  const y = now.getFullYear();
+  const m = String(now.getMonth() + 1).padStart(2, "0");
+  const d = String(now.getDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
+}
+
 export function UkSquarePaymentModal({
   booking,
   category,
@@ -54,13 +62,7 @@ export function UkSquarePaymentModal({
   onDelete,
 }: Props) {
   const meta = categoryMeta(category);
-  const [entryDate, setEntryDate] = useState(() => {
-    const now = new Date();
-    const y = now.getFullYear();
-    const m = String(now.getMonth() + 1).padStart(2, "0");
-    const d = String(now.getDate()).padStart(2, "0");
-    return `${y}-${m}-${d}`;
-  });
+  const [entryDate, setEntryDate] = useState(todayIso);
   const [amount, setAmount] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -111,11 +113,7 @@ export function UkSquarePaymentModal({
     try {
       await onAdd({ entryDate, amount: n });
       setAmount("");
-      const now = new Date();
-      const y = now.getFullYear();
-      const m = String(now.getMonth() + 1).padStart(2, "0");
-      const d = String(now.getDate()).padStart(2, "0");
-      setEntryDate(`${y}-${m}-${d}`);
+      setEntryDate(todayIso());
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not add entry.");
     } finally {

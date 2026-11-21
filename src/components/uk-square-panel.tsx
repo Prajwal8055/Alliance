@@ -904,7 +904,6 @@ export function UkSquarePanel({ onBack, canAdd = false, canDelete = false }: Pro
                               color: "var(--ink)",
                             }}
                           >
-                            {/* pencil / edit icon */}
                             <svg
                               width="16"
                               height="16"

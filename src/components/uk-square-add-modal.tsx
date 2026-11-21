@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import type { UkSquareBooking } from "@/lib/uk-square-data";
+import { dobToIsoDate } from "@/lib/uk-square-payments";
 
 type Props = {
   nextSlNo: number;
@@ -55,21 +56,9 @@ function moneyStr(n: number | null | undefined): string {
   return String(n);
 }
 
-/** dd.mm.yyyy or dd/mm/yyyy → yyyy-mm-dd for date inputs. */
-function dobToIso(dob: string): string {
-  const t = dob.trim();
-  if (!t) return "";
-  if (/^\d{4}-\d{2}-\d{2}$/.test(t)) return t;
-  const m = t.match(/^(\d{1,2})[./-](\d{1,2})[./-](\d{4})$/);
-  if (!m) return "";
-  const d = m[1].padStart(2, "0");
-  const mo = m[2].padStart(2, "0");
-  return `${m[3]}-${mo}-${d}`;
-}
-
 function bookingToDraft(b: UkSquareBooking): Draft {
   return {
-    dob: dobToIso(b.dob),
+    dob: dobToIsoDate(b.dob) ?? "",
     clientName: b.clientName ?? "",
     siteNo: b.siteNo ?? "",
     facing: b.facing ?? "",
