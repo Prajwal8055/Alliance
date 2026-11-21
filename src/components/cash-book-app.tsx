@@ -1063,6 +1063,7 @@ export function CashBookApp({
               onBack={() => setTab(isBoss ? "statement" : "receipts")}
               canAdd={isAccounts || isBoss}
               canDelete={isBoss}
+              isBoss={isBoss}
             />
           </div>
         ) : null}

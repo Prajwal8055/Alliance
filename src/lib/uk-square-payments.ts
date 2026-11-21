@@ -2,6 +2,7 @@ export type UkSquarePaymentCategory =
   | "as_booking"
   | "total_cash"
   | "d_kantha"
+  | "d_kantha_cash"
   | "bsp";
 
 export type UkSquarePaymentEntry = {
@@ -13,12 +14,15 @@ export type UkSquarePaymentEntry = {
   entryDate: string; // yyyy-mm-dd
   amount: number;
   note: string;
+  status: "pending" | "approved";
 };
 
 export const UK_SQUARE_PAYMENT_CATEGORIES: {
   key: UkSquarePaymentCategory;
   label: string;
   note: string;
+  /** Total Cash is D KANTHA Cash + BSP — not a place to post cash. */
+  derived?: boolean;
 }[] = [
   {
     key: "as_booking",
@@ -28,7 +32,8 @@ export const UK_SQUARE_PAYMENT_CATEGORIES: {
   {
     key: "total_cash",
     label: "Total Cash",
-    note: "Cash received on this site",
+    note: "D KANTHA Cash + BSP Excess Cash (derived)",
+    derived: true,
   },
   {
     key: "d_kantha",
@@ -36,11 +41,55 @@ export const UK_SQUARE_PAYMENT_CATEGORIES: {
     note: "Amount to Mr. D Kantha",
   },
   {
+    key: "d_kantha_cash",
+    label: "D KANTHA Cash",
+    note: "D Kantha cash on this site",
+  },
+  {
     key: "bsp",
     label: "BSP Excess Cash",
     note: "BSP excess cash",
   },
 ];
+
+/** Heads that accept dated payment lines. */
+export const UK_SQUARE_EDITABLE_PAYMENT_CATEGORIES = UK_SQUARE_PAYMENT_CATEGORIES.filter(
+  (c) => !c.derived,
+);
+
+/** True when Total Cash is not fully sitting in D KANTHA Cash and/or BSP. */
+export function isTotalCashUnallocated(
+  others: number | null | undefined,
+  dKanthaCash: number | null | undefined,
+  bsp: number | null | undefined,
+): boolean {
+  const cash = Number(others) || 0;
+  if (cash <= 0) return false;
+  const allocated = (Number(dKanthaCash) || 0) + (Number(bsp) || 0);
+  return Math.abs(cash - allocated) > 0.5;
+}
+
+const AGREEMENT_PART = 250_000;
+const AGREEMENT_FULL = 500_000;
+
+export type UkSquareAgreementStatus = "pending" | "approved";
+
+/**
+ * Amounts ready for agreement: Total Cash + Mr. D Kantha (W) ₹2,50,000 each,
+ * or full ₹5,00,000 on Mr. D Kantha (W) alone.
+ */
+export function isAgreementReady(
+  totalCash: number | null | undefined,
+  mrDKantha: number | null | undefined,
+): boolean {
+  const cash = Number(totalCash) || 0;
+  const kantha = Number(mrDKantha) || 0;
+  return (
+    (Math.abs(cash - AGREEMENT_PART) < 0.5 &&
+      Math.abs(kantha - AGREEMENT_PART) < 0.5) ||
+    Math.abs(kantha - AGREEMENT_FULL) < 0.5
+  );
+}
 
 export function categoryMeta(key: UkSquarePaymentCategory) {
   return (

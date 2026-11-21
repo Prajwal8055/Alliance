@@ -22,8 +22,8 @@ type Draft = {
   price: string;
   sqft: string;
   toAsBooking: string;
-  others: string;
   mrDKantha: string;
+  dKanthaCash: string;
   bsp: string;
   remarks: string;
 };
@@ -45,8 +45,8 @@ const emptyDraft = (): Draft => ({
   price: "",
   sqft: "",
   toAsBooking: "",
-  others: "",
   mrDKantha: "",
+  dKanthaCash: "",
   bsp: "",
   remarks: "",
 });
@@ -66,8 +66,8 @@ function bookingToDraft(b: UkSquareBooking): Draft {
     price: moneyStr(b.price),
     sqft: moneyStr(b.sqft),
     toAsBooking: moneyStr(b.toAsBooking),
-    others: moneyStr(b.others),
-    mrDKantha: moneyStr(b.mrDKantha ?? b.dKantha),
+    mrDKantha: moneyStr(b.mrDKantha),
+    dKanthaCash: moneyStr(b.dKantha),
     bsp: moneyStr(b.bsp),
     remarks: b.remarks ?? "",
   };
@@ -104,11 +104,14 @@ export function UkSquareAddModal({ nextSlNo, initial = null, busy, onClose, onSa
 
   const slNo = initial?.slNo ?? nextSlNo;
 
+  const autoTotalCash = useMemo(() => {
+    return (parseMoney(draft.dKanthaCash) ?? 0) + (parseMoney(draft.bsp) ?? 0);
+  }, [draft.dKanthaCash, draft.bsp]);
+
   const autoTotal = useMemo(() => {
-    const others = parseMoney(draft.others) ?? 0;
     const kantha = parseMoney(draft.mrDKantha) ?? 0;
-    return others + kantha;
-  }, [draft.others, draft.mrDKantha]);
+    return autoTotalCash + kantha;
+  }, [autoTotalCash, draft.mrDKantha]);
 
   function setField<K extends keyof Draft>(key: K, value: Draft[K]) {
     setDraft((prev) => ({ ...prev, [key]: value }));
@@ -134,8 +137,8 @@ export function UkSquareAddModal({ nextSlNo, initial = null, busy, onClose, onSa
     }
     for (const [label, raw] of [
       ["To AS Booking", draft.toAsBooking],
-      ["Total Cash", draft.others],
       ["Mr. D Kantha (W)", draft.mrDKantha],
+      ["D KANTHA Cash", draft.dKanthaCash],
       ["BSP Excess Cash", draft.bsp],
     ] as const) {
       if (raw.trim() && parseMoney(raw) == null) {
@@ -167,8 +170,10 @@ export function UkSquareAddModal({ nextSlNo, initial = null, busy, onClose, onSa
       return;
     }
     setError(null);
-    const others = parseMoney(draft.others);
     const kantha = parseMoney(draft.mrDKantha);
+    const dKanthaCash = parseMoney(draft.dKanthaCash);
+    const bsp = parseMoney(draft.bsp);
+    const others = autoTotalCash || null;
     const total = (others ?? 0) + (kantha ?? 0);
     const booking: UkSquareBooking = {
       slNo,
@@ -183,8 +188,8 @@ export function UkSquareAddModal({ nextSlNo, initial = null, busy, onClose, onSa
       others,
       mrDKantha: kantha,
       total: total || null,
-      dKantha: kantha,
-      bsp: parseMoney(draft.bsp),
+      dKantha: dKanthaCash,
+      bsp,
       remarks: draft.remarks.trim(),
     };
     try {
@@ -224,7 +229,7 @@ export function UkSquareAddModal({ nextSlNo, initial = null, busy, onClose, onSa
               : "Add who booked and which site."
             : step === 2
               ? "Enter rate and plot size."
-              : "Enter booking amounts. Total is Total Cash + Mr. D Kantha (W)."}
+              : "Enter booking amounts. Total Cash = D KANTHA Cash + BSP. Total without AS = Total Cash + Mr. D Kantha (W)."}
         </p>
 
         <div className="mt-4 flex gap-1.5" aria-hidden="true">
@@ -366,18 +371,6 @@ export function UkSquareAddModal({ nextSlNo, initial = null, busy, onClose, onSa
                 />
               </label>
               <label className="flex flex-col gap-1 text-xs" style={{ color: "var(--ink-muted)" }}>
-                Total Cash
-                <input
-                  type="text"
-                  inputMode="decimal"
-                  value={draft.others}
-                  onChange={(e) => setField("others", e.target.value)}
-                  className={fieldClass}
-                  style={fieldStyle}
-                  placeholder="0"
-                />
-              </label>
-              <label className="flex flex-col gap-1 text-xs" style={{ color: "var(--ink-muted)" }}>
                 Mr. D Kantha (W)
                 <input
                   type="text"
@@ -389,19 +382,18 @@ export function UkSquareAddModal({ nextSlNo, initial = null, busy, onClose, onSa
                   placeholder="0"
                 />
               </label>
-              <div
-                className="rounded-md border px-3 py-2 text-sm"
-                style={{ borderColor: "var(--line)", background: "var(--bg-deep)" }}
-              >
-                <span style={{ color: "var(--ink-muted)" }}>Total (auto)</span>
-                <p className="mt-0.5 font-semibold tabular-nums">
-                  {new Intl.NumberFormat("en-IN", {
-                    style: "currency",
-                    currency: "INR",
-                    maximumFractionDigits: 0,
-                  }).format(autoTotal)}
-                </p>
-              </div>
+              <label className="flex flex-col gap-1 text-xs" style={{ color: "var(--ink-muted)" }}>
+                D KANTHA Cash
+                <input
+                  type="text"
+                  inputMode="decimal"
+                  value={draft.dKanthaCash}
+                  onChange={(e) => setField("dKanthaCash", e.target.value)}
+                  className={fieldClass}
+                  style={fieldStyle}
+                  placeholder="0"
+                />
+              </label>
               <label className="flex flex-col gap-1 text-xs" style={{ color: "var(--ink-muted)" }}>
                 BSP Excess Cash
                 <input
@@ -414,6 +406,35 @@ export function UkSquareAddModal({ nextSlNo, initial = null, busy, onClose, onSa
                   placeholder="0"
                 />
               </label>
+              <div
+                className="rounded-md border px-3 py-2 text-sm"
+                style={{ borderColor: "var(--line)", background: "var(--bg-deep)" }}
+              >
+                <span style={{ color: "var(--ink-muted)" }}>Total Cash (auto)</span>
+                <p className="mt-0.5 font-semibold tabular-nums">
+                  {new Intl.NumberFormat("en-IN", {
+                    style: "currency",
+                    currency: "INR",
+                    maximumFractionDigits: 0,
+                  }).format(autoTotalCash)}
+                </p>
+                <p className="mt-0.5 text-[11px]" style={{ color: "var(--ink-muted)" }}>
+                  D KANTHA Cash + BSP
+                </p>
+              </div>
+              <div
+                className="rounded-md border px-3 py-2 text-sm"
+                style={{ borderColor: "var(--line)", background: "var(--bg-deep)" }}
+              >
+                <span style={{ color: "var(--ink-muted)" }}>Total without AS (auto)</span>
+                <p className="mt-0.5 font-semibold tabular-nums">
+                  {new Intl.NumberFormat("en-IN", {
+                    style: "currency",
+                    currency: "INR",
+                    maximumFractionDigits: 0,
+                  }).format(autoTotal)}
+                </p>
+              </div>
               <label className="flex flex-col gap-1 text-xs" style={{ color: "var(--ink-muted)" }}>
                 Remarks
                 <textarea

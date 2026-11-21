@@ -19,10 +19,16 @@ type Props = {
   seedAmount?: number | null;
   canAdd: boolean;
   canDelete: boolean;
+  isBoss?: boolean;
   busy?: boolean;
   onClose: () => void;
-  onAdd: (input: { entryDate: string; amount: number }) => Promise<void>;
+  onAdd: (input: {
+    entryDate: string;
+    amount: number;
+    remarks: string;
+  }) => Promise<void>;
   onDelete: (entry: UkSquarePaymentEntry) => Promise<void>;
+  onApprove?: (entry: UkSquarePaymentEntry) => Promise<void>;
 };
 
 function formatInr(n: number | null | undefined) {
@@ -56,14 +62,17 @@ export function UkSquarePaymentModal({
   seedAmount = null,
   canAdd,
   canDelete,
+  isBoss = false,
   busy,
   onClose,
   onAdd,
   onDelete,
+  onApprove,
 }: Props) {
   const meta = categoryMeta(category);
   const [entryDate, setEntryDate] = useState(todayIso);
   const [amount, setAmount] = useState("");
+  const [remarks, setRemarks] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
@@ -77,10 +86,13 @@ export function UkSquarePaymentModal({
 
   const total = useMemo(() => {
     if (entries.length > 0) {
-      return entries.reduce((s, e) => s + e.amount, 0);
+      return entries
+        .filter((e) => e.status !== "pending")
+        .reduce((s, e) => s + e.amount, 0);
     }
     return seedRow?.amount ?? 0;
   }, [entries, seedRow]);
+  const showRowActions = canDelete || (isBoss && Boolean(onApprove));
   const nextSl = useMemo(
     () =>
       entries.length > 0
@@ -111,8 +123,9 @@ export function UkSquarePaymentModal({
     setError(null);
     setSaving(true);
     try {
-      await onAdd({ entryDate, amount: n });
+      await onAdd({ entryDate, amount: n, remarks: remarks.trim() });
       setAmount("");
+      setRemarks("");
       setEntryDate(todayIso());
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not add entry.");
@@ -148,7 +161,10 @@ export function UkSquarePaymentModal({
           {meta.label}
         </h2>
         <p className="mt-1 text-sm" style={{ color: "var(--ink-muted)", fontFamily: "var(--font-body)" }}>
-          {meta.note}. Add one dated amount at a time.
+          {meta.note}.
+          {canAdd
+            ? " Add one dated amount at a time."
+            : " View only — only Boss can edit these entries."}
         </p>
 
         <div
@@ -160,15 +176,16 @@ export function UkSquarePaymentModal({
               <tr>
                 <th className="px-3 py-2 font-semibold">Sl</th>
                 <th className="px-3 py-2 font-semibold">Date</th>
+                <th className="px-3 py-2 font-semibold">Remarks</th>
                 <th className="px-3 py-2 text-right font-semibold">Amount</th>
-                {canDelete ? <th className="px-3 py-2 font-semibold"> </th> : null}
+                {showRowActions ? <th className="px-3 py-2 font-semibold"> </th> : null}
               </tr>
             </thead>
             <tbody>
               {entries.length === 0 && !seedRow ? (
                 <tr className="border-t" style={{ borderColor: "var(--line)" }}>
                   <td
-                    colSpan={canDelete ? 4 : 3}
+                    colSpan={showRowActions ? 5 : 4}
                     className="px-3 py-6 text-center text-sm"
                     style={{ color: "var(--ink-muted)" }}
                   >
@@ -182,10 +199,13 @@ export function UkSquarePaymentModal({
                   <td className="px-3 py-2.5 whitespace-nowrap">
                     {formatEntryDate(seedRow.entryDate)}
                   </td>
+                  <td className="px-3 py-2.5" style={{ color: "var(--ink-muted)" }}>
+                    —
+                  </td>
                   <td className="px-3 py-2.5 text-right font-semibold tabular-nums whitespace-nowrap">
                     {formatInr(seedRow.amount)}
                   </td>
-                  {canDelete ? <td className="px-3 py-2.5" /> : null}
+                  {showRowActions ? <td className="px-3 py-2.5" /> : null}
                 </tr>
               ) : null}
               {entries.map((row) => (
@@ -194,20 +214,48 @@ export function UkSquarePaymentModal({
                   <td className="px-3 py-2.5 whitespace-nowrap">
                     {formatEntryDate(row.entryDate)}
                   </td>
+                  <td className="px-3 py-2.5 max-w-[10rem] whitespace-pre-wrap">
+                    <span className="inline-flex flex-col gap-1">
+                      <span>{row.note?.trim() || "—"}</span>
+                      {row.status === "pending" ? (
+                        <span
+                          className="w-fit rounded-full px-2 py-0.5 text-[11px] font-semibold"
+                          style={{ color: "var(--warn)", background: "var(--bg-deep)" }}
+                        >
+                          Pending
+                        </span>
+                      ) : null}
+                    </span>
+                  </td>
                   <td className="px-3 py-2.5 text-right font-semibold tabular-nums whitespace-nowrap">
                     {formatInr(row.amount)}
                   </td>
-                  {canDelete ? (
-                    <td className="px-3 py-2.5 text-right">
-                      <button
-                        type="button"
-                        disabled={busy || saving}
-                        onClick={() => void onDelete(row)}
-                        className="text-xs font-semibold disabled:opacity-50"
-                        style={{ color: "var(--danger)" }}
-                      >
-                        Delete
-                      </button>
+                  {showRowActions ? (
+                    <td className="px-3 py-2.5 text-right whitespace-nowrap">
+                      <div className="flex items-center justify-end gap-2">
+                        {row.status === "pending" && isBoss && onApprove ? (
+                          <button
+                            type="button"
+                            disabled={busy || saving}
+                            onClick={() => void onApprove(row)}
+                            className="text-xs font-semibold disabled:opacity-50"
+                            style={{ color: "var(--accent)" }}
+                          >
+                            Approve
+                          </button>
+                        ) : null}
+                        {canDelete ? (
+                          <button
+                            type="button"
+                            disabled={busy || saving}
+                            onClick={() => void onDelete(row)}
+                            className="text-xs font-semibold disabled:opacity-50"
+                            style={{ color: "var(--danger)" }}
+                          >
+                            Delete
+                          </button>
+                        ) : null}
+                      </div>
                     </td>
                   ) : null}
                 </tr>
@@ -216,13 +264,13 @@ export function UkSquarePaymentModal({
                 className="border-t-2"
                 style={{ borderColor: "var(--line)", background: "var(--bg-deep)" }}
               >
-                <td className="px-3 py-2.5 font-semibold" colSpan={2}>
-                  Total
+                <td className="px-3 py-2.5 font-semibold" colSpan={3}>
+                  Total (approved)
                 </td>
                 <td className="px-3 py-2.5 text-right font-semibold tabular-nums">
                   {formatInr(total || null)}
                 </td>
-                {canDelete ? <td /> : null}
+                {showRowActions ? <td /> : null}
               </tr>
             </tbody>
           </table>
@@ -256,7 +304,24 @@ export function UkSquarePaymentModal({
                   inputMode="decimal"
                   required
                   value={amount}
-                  onChange={(e) => setAmount(e.target.value)}
+                  onChange={(e) => {
+                    const raw = e.target.value.replace(/[^\d.]/g, "");
+                    const parts = raw.split(".");
+                    const next =
+                      parts.length <= 1
+                        ? raw
+                        : `${parts[0]}.${parts.slice(1).join("")}`;
+                    setAmount(next);
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.ctrlKey || e.metaKey || e.altKey) return;
+                    if (
+                      e.key.length === 1 &&
+                      !/[0-9.]/.test(e.key)
+                    ) {
+                      e.preventDefault();
+                    }
+                  }}
                   placeholder="50000"
                   className="rounded-md border px-3 py-2 text-sm"
                   style={{ borderColor: "var(--line)", background: "#fff", color: "var(--ink)" }}
@@ -268,6 +333,17 @@ export function UkSquarePaymentModal({
                 ) : null}
               </label>
             </div>
+            <label className="flex flex-col gap-1 text-xs" style={{ color: "var(--ink-muted)" }}>
+              Remarks
+              <textarea
+                value={remarks}
+                onChange={(e) => setRemarks(e.target.value)}
+                placeholder="Optional notes"
+                rows={3}
+                className="w-full rounded-md border px-3 py-2 text-sm resize-y min-h-[4.5rem]"
+                style={{ borderColor: "var(--line)", background: "#fff", color: "var(--ink)" }}
+              />
+            </label>
             {error ? (
               <p className="text-sm font-medium" style={{ color: "var(--danger)" }} role="alert">
                 {error}

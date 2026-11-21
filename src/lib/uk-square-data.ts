@@ -1,3 +1,5 @@
+export type UkSquareApprovalStatus = "pending" | "approved";
+
 export type UkSquareBooking = {
   slNo: number;
   dob: string;
@@ -14,13 +16,16 @@ export type UkSquareBooking = {
   dKantha: number | null;
   bsp: number | null;
   remarks?: string;
+  /** Seed workbook rows are treated as approved when omitted. */
+  status?: UkSquareApprovalStatus;
 };
 
 export const UK_SQUARE_TITLE = "UK Square";
 export const UK_SQUARE_SUBTITLE = "U K Square sites booking details (18.11.2026)";
 
-export const UK_SQUARE_BOOKINGS: UkSquareBooking[] = 
+export const UK_SQUARE_BOOKINGS: UkSquareBooking[] =
 [
+
   {
     "slNo": 1,
     "dob": "22.05.2026",
