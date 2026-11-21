@@ -5,6 +5,8 @@ import type { UkSquareBooking } from "@/lib/uk-square-data";
 
 type Props = {
   nextSlNo: number;
+  /** When set, modal edits this booking (keeps slNo). */
+  initial?: UkSquareBooking | null;
   busy?: boolean;
   onClose: () => void;
   onSave: (booking: UkSquareBooking) => Promise<void>;
@@ -38,6 +40,39 @@ const emptyDraft = (): Draft => ({
   bsp: "",
 });
 
+function moneyStr(n: number | null | undefined): string {
+  if (n == null || Number.isNaN(n)) return "";
+  return String(n);
+}
+
+/** dd.mm.yyyy or dd/mm/yyyy → yyyy-mm-dd for date inputs. */
+function dobToIso(dob: string): string {
+  const t = dob.trim();
+  if (!t) return "";
+  if (/^\d{4}-\d{2}-\d{2}$/.test(t)) return t;
+  const m = t.match(/^(\d{1,2})[./-](\d{1,2})[./-](\d{4})$/);
+  if (!m) return "";
+  const d = m[1].padStart(2, "0");
+  const mo = m[2].padStart(2, "0");
+  return `${m[3]}-${mo}-${d}`;
+}
+
+function bookingToDraft(b: UkSquareBooking): Draft {
+  return {
+    dob: dobToIso(b.dob),
+    clientName: b.clientName ?? "",
+    siteNo: b.siteNo ?? "",
+    facing: b.facing ?? "",
+    realtors: b.realtors ?? "",
+    price: moneyStr(b.price),
+    sqft: moneyStr(b.sqft),
+    toAsBooking: moneyStr(b.toAsBooking),
+    others: moneyStr(b.others),
+    mrDKantha: moneyStr(b.mrDKantha ?? b.dKantha),
+    bsp: moneyStr(b.bsp),
+  };
+}
+
 function parseMoney(raw: string): number | null {
   const t = raw.trim().replace(/,/g, "");
   if (!t) return null;
@@ -59,10 +94,15 @@ const fieldStyle = {
   color: "var(--ink)",
 } as const;
 
-export function UkSquareAddModal({ nextSlNo, busy, onClose, onSave }: Props) {
+export function UkSquareAddModal({ nextSlNo, initial = null, busy, onClose, onSave }: Props) {
+  const isEdit = Boolean(initial);
   const [step, setStep] = useState<1 | 2 | 3>(1);
-  const [draft, setDraft] = useState<Draft>(emptyDraft);
+  const [draft, setDraft] = useState<Draft>(() =>
+    initial ? bookingToDraft(initial) : emptyDraft(),
+  );
   const [error, setError] = useState<string | null>(null);
+
+  const slNo = initial?.slNo ?? nextSlNo;
 
   const autoTotal = useMemo(() => {
     const others = parseMoney(draft.others) ?? 0;
@@ -76,8 +116,11 @@ export function UkSquareAddModal({ nextSlNo, busy, onClose, onSave }: Props) {
 
   function validateStep(s: 1 | 2 | 3): string | null {
     if (s === 1) {
+      if (!draft.dob.trim()) return "Date of booking is required.";
       if (!draft.clientName.trim()) return "Client name is required.";
       if (!draft.siteNo.trim()) return "Site number is required.";
+      if (!draft.facing.trim()) return "Facing is required.";
+      if (!draft.realtors.trim()) return "Realtors is required.";
       return null;
     }
     if (s === 2) {
@@ -90,10 +133,10 @@ export function UkSquareAddModal({ nextSlNo, busy, onClose, onSave }: Props) {
       return null;
     }
     for (const [label, raw] of [
-      ["AS booking", draft.toAsBooking],
-      ["Others", draft.others],
-      ["D Kantha", draft.mrDKantha],
-      ["BSP", draft.bsp],
+      ["To AS Booking", draft.toAsBooking],
+      ["Total Cash", draft.others],
+      ["Mr. D Kantha (W)", draft.mrDKantha],
+      ["BSP Excess Cash", draft.bsp],
     ] as const) {
       if (raw.trim() && parseMoney(raw) == null) {
         return `Enter a valid amount for ${label}.`;
@@ -128,7 +171,7 @@ export function UkSquareAddModal({ nextSlNo, busy, onClose, onSave }: Props) {
     const kantha = parseMoney(draft.mrDKantha);
     const total = (others ?? 0) + (kantha ?? 0);
     const booking: UkSquareBooking = {
-      slNo: nextSlNo,
+      slNo,
       dob: isoToDob(draft.dob),
       clientName: draft.clientName.trim(),
       siteNo: draft.siteNo.trim(),
@@ -165,7 +208,7 @@ export function UkSquareAddModal({ nextSlNo, busy, onClose, onSave }: Props) {
           className="text-xs uppercase tracking-[0.16em]"
           style={{ color: "var(--accent)", fontFamily: "var(--font-body)" }}
         >
-          Step {step} of 3
+          Step {step} of 3{isEdit ? " · Edit" : ""}
         </p>
         <h2 id="uk-square-add-title" className="mt-1 text-2xl font-semibold">
           {step === 1 ? "Client & site" : step === 2 ? "Pricing" : "Payments"}
@@ -175,10 +218,12 @@ export function UkSquareAddModal({ nextSlNo, busy, onClose, onSave }: Props) {
           style={{ color: "var(--ink-muted)", fontFamily: "var(--font-body)" }}
         >
           {step === 1
-            ? "Add who booked and which site."
+            ? isEdit
+              ? "Update who booked and which site."
+              : "Add who booked and which site."
             : step === 2
               ? "Enter rate and plot size."
-              : "Enter booking amounts. Total is Others + D Kantha."}
+              : "Enter booking amounts. Total is Total Cash + Mr. D Kantha (W)."}
         </p>
 
         <div className="mt-4 flex gap-1.5" aria-hidden="true">
@@ -197,9 +242,12 @@ export function UkSquareAddModal({ nextSlNo, busy, onClose, onSave }: Props) {
           {step === 1 ? (
             <>
               <label className="flex flex-col gap-1 text-xs" style={{ color: "var(--ink-muted)" }}>
-                Date of booking
+                <span>
+                  Date of booking <span style={{ color: "var(--danger)" }}>*</span>
+                </span>
                 <input
                   type="date"
+                  required
                   value={draft.dob}
                   onChange={(e) => setField("dob", e.target.value)}
                   className={fieldClass}
@@ -207,7 +255,9 @@ export function UkSquareAddModal({ nextSlNo, busy, onClose, onSave }: Props) {
                 />
               </label>
               <label className="flex flex-col gap-1 text-xs" style={{ color: "var(--ink-muted)" }}>
-                Client name
+                <span>
+                  Client Name <span style={{ color: "var(--danger)" }}>*</span>
+                </span>
                 <input
                   type="text"
                   required
@@ -215,14 +265,17 @@ export function UkSquareAddModal({ nextSlNo, busy, onClose, onSave }: Props) {
                   onChange={(e) => setField("clientName", e.target.value)}
                   className={fieldClass}
                   style={fieldStyle}
-                  placeholder="Client name"
+                  placeholder="Client Name"
                   autoFocus
                 />
               </label>
               <label className="flex flex-col gap-1 text-xs" style={{ color: "var(--ink-muted)" }}>
-                Site no.
+                <span>
+                  Site No. <span style={{ color: "var(--danger)" }}>*</span>
+                </span>
                 <input
                   type="text"
+                  required
                   value={draft.siteNo}
                   onChange={(e) => setField("siteNo", e.target.value)}
                   className={fieldClass}
@@ -231,9 +284,12 @@ export function UkSquareAddModal({ nextSlNo, busy, onClose, onSave }: Props) {
                 />
               </label>
               <label className="flex flex-col gap-1 text-xs" style={{ color: "var(--ink-muted)" }}>
-                Facing
+                <span>
+                  Facing <span style={{ color: "var(--danger)" }}>*</span>
+                </span>
                 <input
                   type="text"
+                  required
                   value={draft.facing}
                   onChange={(e) => setField("facing", e.target.value)}
                   className={fieldClass}
@@ -242,9 +298,12 @@ export function UkSquareAddModal({ nextSlNo, busy, onClose, onSave }: Props) {
                 />
               </label>
               <label className="flex flex-col gap-1 text-xs" style={{ color: "var(--ink-muted)" }}>
-                Realtors
+                <span>
+                  Realtors <span style={{ color: "var(--danger)" }}>*</span>
+                </span>
                 <input
                   type="text"
+                  required
                   value={draft.realtors}
                   onChange={(e) => setField("realtors", e.target.value)}
                   className={fieldClass}
@@ -283,7 +342,9 @@ export function UkSquareAddModal({ nextSlNo, busy, onClose, onSave }: Props) {
                 />
               </label>
               <p className="text-xs" style={{ color: "var(--ink-muted)" }}>
-                Sl no. will be <span className="font-semibold tabular-nums">{nextSlNo}</span>
+                Sl No.{" "}
+                <span className="font-semibold tabular-nums">{slNo}</span>
+                {isEdit ? " (unchanged)" : null}
               </p>
             </>
           ) : null}
@@ -291,7 +352,7 @@ export function UkSquareAddModal({ nextSlNo, busy, onClose, onSave }: Props) {
           {step === 3 ? (
             <>
               <label className="flex flex-col gap-1 text-xs" style={{ color: "var(--ink-muted)" }}>
-                AS booking
+                To AS Booking
                 <input
                   type="text"
                   inputMode="decimal"
@@ -304,7 +365,7 @@ export function UkSquareAddModal({ nextSlNo, busy, onClose, onSave }: Props) {
                 />
               </label>
               <label className="flex flex-col gap-1 text-xs" style={{ color: "var(--ink-muted)" }}>
-                Others
+                Total Cash
                 <input
                   type="text"
                   inputMode="decimal"
@@ -316,7 +377,7 @@ export function UkSquareAddModal({ nextSlNo, busy, onClose, onSave }: Props) {
                 />
               </label>
               <label className="flex flex-col gap-1 text-xs" style={{ color: "var(--ink-muted)" }}>
-                D Kantha
+                Mr. D Kantha (W)
                 <input
                   type="text"
                   inputMode="decimal"
@@ -341,7 +402,7 @@ export function UkSquareAddModal({ nextSlNo, busy, onClose, onSave }: Props) {
                 </p>
               </div>
               <label className="flex flex-col gap-1 text-xs" style={{ color: "var(--ink-muted)" }}>
-                BSP
+                BSP Excess Cash
                 <input
                   type="text"
                   inputMode="decimal"
@@ -402,7 +463,7 @@ export function UkSquareAddModal({ nextSlNo, busy, onClose, onSave }: Props) {
               className="rounded-md px-4 py-2.5 font-semibold text-white disabled:opacity-60"
               style={{ background: "var(--accent)" }}
             >
-              {busy ? "Saving…" : "Add booking"}
+              {busy ? "Saving…" : isEdit ? "Save changes" : "Add booking"}
             </button>
           )}
         </div>

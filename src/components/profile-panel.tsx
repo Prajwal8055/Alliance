@@ -24,6 +24,20 @@ function initials(name: string) {
   return (parts[0][0] + parts[1][0]).toUpperCase();
 }
 
+function formatBytes(n: number) {
+  if (!Number.isFinite(n) || n < 0) return "—";
+  if (n < 1024) return `${Math.round(n)} B`;
+  const units = ["KB", "MB", "GB", "TB"] as const;
+  let v = n / 1024;
+  let i = 0;
+  while (v >= 1024 && i < units.length - 1) {
+    v /= 1024;
+    i += 1;
+  }
+  const digits = v >= 100 ? 0 : v >= 10 ? 1 : 2;
+  return `${v.toFixed(digits)} ${units[i]}`;
+}
+
 export function ProfilePanel({ profile, onProfileUpdated, onDataWiped }: Props) {
   const router = useRouter();
   const [fullName, setFullName] = useState(profile.full_name || "");
@@ -43,6 +57,38 @@ export function ProfilePanel({ profile, onProfileUpdated, onDataWiped }: Props) 
   const frameRef = useRef<number | null>(null);
   const completedRef = useRef(false);
 
+  type StorageStats = {
+    usedBytes: number;
+    freeBytes: number;
+    quotaBytes: number;
+    fileCount: number;
+    databaseBytes: number;
+    databaseQuotaBytes: number;
+    databaseFreeBytes: number;
+    fileUsedBytes: number;
+    fileQuotaBytes: number;
+    fileFreeBytes: number;
+  };
+  const [storage, setStorage] = useState<StorageStats | null>(null);
+  const [storageError, setStorageError] = useState<string | null>(null);
+  const [storageLoading, setStorageLoading] = useState(true);
+  const [storageUpdatedAt, setStorageUpdatedAt] = useState<number | null>(null);
+
+  function parseStorageBody(body: Record<string, unknown>): StorageStats {
+    return {
+      usedBytes: Number(body.usedBytes ?? 0),
+      freeBytes: Number(body.freeBytes ?? 0),
+      quotaBytes: Number(body.quotaBytes ?? 0),
+      fileCount: Number(body.fileCount ?? 0),
+      databaseBytes: Number(body.databaseBytes ?? 0),
+      databaseQuotaBytes: Number(body.databaseQuotaBytes ?? 0),
+      databaseFreeBytes: Number(body.databaseFreeBytes ?? 0),
+      fileUsedBytes: Number(body.fileUsedBytes ?? 0),
+      fileQuotaBytes: Number(body.fileQuotaBytes ?? 0),
+      fileFreeBytes: Number(body.fileFreeBytes ?? 0),
+    };
+  }
+
   const displayName = fullName.trim() || profile.full_name?.trim() || "Your account";
   const roleLabel =
     profile.role === "boss" ? "Boss" : profile.role === "hr" ? "HR" : "Accounts";
@@ -51,6 +97,69 @@ export function ProfilePanel({ profile, onProfileUpdated, onDataWiped }: Props) 
   useEffect(() => {
     return () => {
       if (frameRef.current !== null) cancelAnimationFrame(frameRef.current);
+    };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    let inFlight = false;
+
+    async function loadStorage(opts?: { silent?: boolean }) {
+      if (cancelled || inFlight) return;
+      inFlight = true;
+      if (!opts?.silent) {
+        setStorageLoading(true);
+        setStorageError(null);
+      }
+      try {
+        const res = await fetch("/api/storage-usage", { cache: "no-store" });
+        const body = (await res.json().catch(() => ({}))) as Record<string, unknown> & {
+          error?: string;
+        };
+        if (!res.ok) {
+          throw new Error(body.error || "Could not load storage");
+        }
+        if (cancelled) return;
+        setStorage(parseStorageBody(body));
+        setStorageUpdatedAt(Date.now());
+        setStorageError(null);
+      } catch (err) {
+        if (!cancelled && !opts?.silent) {
+          setStorage(null);
+          setStorageError(err instanceof Error ? err.message : "Could not load storage");
+        }
+      } finally {
+        inFlight = false;
+        if (!cancelled && !opts?.silent) setStorageLoading(false);
+      }
+    }
+
+    void loadStorage();
+
+    const POLL_MS = 15_000;
+    const intervalId = window.setInterval(() => {
+      if (document.visibilityState === "visible") {
+        void loadStorage({ silent: true });
+      }
+    }, POLL_MS);
+
+    function onVisible() {
+      if (document.visibilityState === "visible") {
+        void loadStorage({ silent: true });
+      }
+    }
+    function onFocus() {
+      void loadStorage({ silent: true });
+    }
+
+    document.addEventListener("visibilitychange", onVisible);
+    window.addEventListener("focus", onFocus);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(intervalId);
+      document.removeEventListener("visibilitychange", onVisible);
+      window.removeEventListener("focus", onFocus);
     };
   }, []);
 
@@ -76,6 +185,16 @@ export function ProfilePanel({ profile, onProfileUpdated, onDataWiped }: Props) 
       }
       setMessage("All cash book data and logs deleted");
       await onDataWiped?.();
+      try {
+        const res = await fetch("/api/storage-usage", { cache: "no-store" });
+        const body = (await res.json().catch(() => ({}))) as Record<string, unknown>;
+        if (res.ok) {
+          setStorage(parseStorageBody(body));
+          setStorageUpdatedAt(Date.now());
+        }
+      } catch {
+        // ignore refresh errors after wipe
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to delete data");
     } finally {
@@ -271,6 +390,147 @@ export function ProfilePanel({ profile, onProfileUpdated, onDataWiped }: Props) 
               </button>
             </div>
           </form>
+
+          <div className="h-px w-full" style={{ background: "var(--line)" }} />
+
+          <div className="grid gap-3">
+            <div>
+              <h2
+                className="text-lg font-semibold"
+                style={{ fontFamily: "var(--font-display)" }}
+              >
+                Supabase storage
+              </h2>
+              <p className="mt-0.5 text-sm" style={{ color: "var(--ink-muted)" }}>
+                Live usage from your Supabase project (database + file storage). Auto-updates
+                every 15s while this page is open.
+              </p>
+            </div>
+            {storageLoading ? (
+              <p className="text-sm" style={{ color: "var(--ink-muted)" }}>
+                Loading storage…
+              </p>
+            ) : storageError ? (
+              <p className="text-sm" style={{ color: "var(--danger)" }} role="alert">
+                {storageError}
+              </p>
+            ) : storage ? (
+              <div
+                className="rounded-xl border p-4"
+                style={{ borderColor: "var(--line)", background: "var(--bg-deep)" }}
+              >
+                <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+                  <div>
+                    <p className="text-xs uppercase tracking-wide" style={{ color: "var(--ink-muted)" }}>
+                      Total
+                    </p>
+                    <p
+                      className="mt-1 text-xl font-semibold tabular-nums"
+                      style={{ fontFamily: "var(--font-display)" }}
+                    >
+                      {formatBytes(storage.quotaBytes)}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-xs uppercase tracking-wide" style={{ color: "var(--ink-muted)" }}>
+                      Used
+                    </p>
+                    <p
+                      className="mt-1 text-xl font-semibold tabular-nums"
+                      style={{ fontFamily: "var(--font-display)" }}
+                    >
+                      {formatBytes(storage.usedBytes)}
+                    </p>
+                  </div>
+                  <div className="col-span-2 sm:col-span-1">
+                    <p className="text-xs uppercase tracking-wide" style={{ color: "var(--ink-muted)" }}>
+                      Free
+                    </p>
+                    <p
+                      className="mt-1 text-xl font-semibold tabular-nums"
+                      style={{ fontFamily: "var(--font-display)", color: "var(--accent)" }}
+                    >
+                      {formatBytes(storage.freeBytes)}
+                    </p>
+                  </div>
+                </div>
+                <div
+                  className="mt-4 h-2 overflow-hidden rounded-full"
+                  style={{ background: "var(--line)" }}
+                  role="progressbar"
+                  aria-valuemin={0}
+                  aria-valuemax={100}
+                  aria-valuenow={
+                    storage.quotaBytes > 0
+                      ? Math.min(100, Math.round((storage.usedBytes / storage.quotaBytes) * 100))
+                      : 0
+                  }
+                  aria-label="Supabase storage used"
+                >
+                  <div
+                    className="h-full rounded-full transition-[width]"
+                    style={{
+                      width: `${
+                        storage.quotaBytes > 0
+                          ? Math.min(100, (storage.usedBytes / storage.quotaBytes) * 100)
+                          : 0
+                      }%`,
+                      background:
+                        storage.quotaBytes > 0 && storage.usedBytes / storage.quotaBytes > 0.9
+                          ? "var(--danger)"
+                          : "var(--accent)",
+                    }}
+                  />
+                </div>
+                <div
+                  className="mt-4 grid gap-3 border-t pt-3 sm:grid-cols-2"
+                  style={{ borderColor: "var(--line)" }}
+                >
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-wide" style={{ color: "var(--ink-muted)" }}>
+                      Database
+                    </p>
+                    <p className="mt-1 text-sm tabular-nums">
+                      <span className="font-semibold">{formatBytes(storage.databaseBytes)}</span>
+                      <span style={{ color: "var(--ink-muted)" }}>
+                        {" "}
+                        / {formatBytes(storage.databaseQuotaBytes)}
+                      </span>
+                    </p>
+                    <p className="text-xs" style={{ color: "var(--ink-muted)" }}>
+                      Free {formatBytes(storage.databaseFreeBytes)}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-wide" style={{ color: "var(--ink-muted)" }}>
+                      File storage
+                    </p>
+                    <p className="mt-1 text-sm tabular-nums">
+                      <span className="font-semibold">{formatBytes(storage.fileUsedBytes)}</span>
+                      <span style={{ color: "var(--ink-muted)" }}>
+                        {" "}
+                        / {formatBytes(storage.fileQuotaBytes)}
+                      </span>
+                    </p>
+                    <p className="text-xs" style={{ color: "var(--ink-muted)" }}>
+                      Free {formatBytes(storage.fileFreeBytes)} · {storage.fileCount} photo
+                      {storage.fileCount === 1 ? "" : "s"}
+                    </p>
+                  </div>
+                </div>
+                {storageUpdatedAt ? (
+                  <p className="mt-3 text-xs" style={{ color: "var(--ink-muted)" }}>
+                    Updated{" "}
+                    {new Date(storageUpdatedAt).toLocaleTimeString(undefined, {
+                      hour: "2-digit",
+                      minute: "2-digit",
+                      second: "2-digit",
+                    })}
+                  </p>
+                ) : null}
+              </div>
+            ) : null}
+          </div>
 
           <div className="h-px w-full" style={{ background: "var(--line)" }} />
 

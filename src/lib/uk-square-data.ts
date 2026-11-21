@@ -18,7 +18,8 @@ export type UkSquareBooking = {
 export const UK_SQUARE_TITLE = "UK Square";
 export const UK_SQUARE_SUBTITLE = "U K Square sites booking details (18.11.2026)";
 
-export const UK_SQUARE_BOOKINGS: UkSquareBooking[] = [
+export const UK_SQUARE_BOOKINGS: UkSquareBooking[] = 
+[
   {
     "slNo": 1,
     "dob": "22.05.2026",
@@ -33,7 +34,7 @@ export const UK_SQUARE_BOOKINGS: UkSquareBooking[] = [
     "mrDKantha": null,
     "total": 700000.0,
     "dKantha": null,
-    "bsp": 700000.0
+    "bsp": 700000.0,
   },
   {
     "slNo": 2,
@@ -49,7 +50,7 @@ export const UK_SQUARE_BOOKINGS: UkSquareBooking[] = [
     "mrDKantha": 250000.0,
     "total": 500000.0,
     "dKantha": 250000.0,
-    "bsp": 0.0
+    "bsp": 0.0,
   },
   {
     "slNo": 3,
@@ -65,7 +66,7 @@ export const UK_SQUARE_BOOKINGS: UkSquareBooking[] = [
     "mrDKantha": 250000.0,
     "total": 500000.0,
     "dKantha": 250000.0,
-    "bsp": 0.0
+    "bsp": 0.0,
   },
   {
     "slNo": 4,
@@ -81,7 +82,7 @@ export const UK_SQUARE_BOOKINGS: UkSquareBooking[] = [
     "mrDKantha": null,
     "total": 500000.0,
     "dKantha": null,
-    "bsp": 500000.0
+    "bsp": 500000.0,
   },
   {
     "slNo": 5,
@@ -97,7 +98,7 @@ export const UK_SQUARE_BOOKINGS: UkSquareBooking[] = [
     "mrDKantha": 250000.0,
     "total": 500000.0,
     "dKantha": 250000.0,
-    "bsp": 0.0
+    "bsp": 0.0,
   },
   {
     "slNo": 6,
@@ -113,7 +114,7 @@ export const UK_SQUARE_BOOKINGS: UkSquareBooking[] = [
     "mrDKantha": 250000.0,
     "total": 500000.0,
     "dKantha": 250000.0,
-    "bsp": 0.0
+    "bsp": 0.0,
   },
   {
     "slNo": 7,
@@ -129,7 +130,7 @@ export const UK_SQUARE_BOOKINGS: UkSquareBooking[] = [
     "mrDKantha": 250000.0,
     "total": 500000.0,
     "dKantha": 250000.0,
-    "bsp": 0.0
+    "bsp": 0.0,
   },
   {
     "slNo": 8,
@@ -145,7 +146,7 @@ export const UK_SQUARE_BOOKINGS: UkSquareBooking[] = [
     "mrDKantha": 250000.0,
     "total": 500000.0,
     "dKantha": 250000.0,
-    "bsp": 0.0
+    "bsp": 0.0,
   },
   {
     "slNo": 9,
@@ -161,7 +162,7 @@ export const UK_SQUARE_BOOKINGS: UkSquareBooking[] = [
     "mrDKantha": 250000.0,
     "total": 500000.0,
     "dKantha": 250000.0,
-    "bsp": 0.0
+    "bsp": 0.0,
   },
   {
     "slNo": 10,
@@ -177,7 +178,7 @@ export const UK_SQUARE_BOOKINGS: UkSquareBooking[] = [
     "mrDKantha": null,
     "total": 500000.0,
     "dKantha": null,
-    "bsp": 500000.0
+    "bsp": 500000.0,
   },
   {
     "slNo": 11,
@@ -193,7 +194,7 @@ export const UK_SQUARE_BOOKINGS: UkSquareBooking[] = [
     "mrDKantha": null,
     "total": 500000.0,
     "dKantha": null,
-    "bsp": 500000.0
+    "bsp": 500000.0,
   },
   {
     "slNo": 12,
@@ -209,7 +210,7 @@ export const UK_SQUARE_BOOKINGS: UkSquareBooking[] = [
     "mrDKantha": null,
     "total": 700000.0,
     "dKantha": null,
-    "bsp": 700000.0
+    "bsp": 700000.0,
   },
   {
     "slNo": 13,
@@ -225,7 +226,7 @@ export const UK_SQUARE_BOOKINGS: UkSquareBooking[] = [
     "mrDKantha": 250000.0,
     "total": 500000.0,
     "dKantha": 250000.0,
-    "bsp": 0.0
+    "bsp": 0.0,
   },
   {
     "slNo": 14,
@@ -241,7 +242,7 @@ export const UK_SQUARE_BOOKINGS: UkSquareBooking[] = [
     "mrDKantha": 250000.0,
     "total": 500000.0,
     "dKantha": 250000.0,
-    "bsp": 0.0
+    "bsp": 0.0,
   },
   {
     "slNo": 15,
@@ -257,7 +258,7 @@ export const UK_SQUARE_BOOKINGS: UkSquareBooking[] = [
     "mrDKantha": null,
     "total": 500000.0,
     "dKantha": null,
-    "bsp": 500000.0
+    "bsp": 500000.0,
   },
   {
     "slNo": 16,
@@ -273,7 +274,7 @@ export const UK_SQUARE_BOOKINGS: UkSquareBooking[] = [
     "mrDKantha": 250000.0,
     "total": 500000.0,
     "dKantha": 250000.0,
-    "bsp": 0.0
+    "bsp": 0.0,
   },
   {
     "slNo": 17,
@@ -289,7 +290,7 @@ export const UK_SQUARE_BOOKINGS: UkSquareBooking[] = [
     "mrDKantha": 250000.0,
     "total": 500000.0,
     "dKantha": 250000.0,
-    "bsp": 0.0
+    "bsp": 0.0,
   },
   {
     "slNo": 18,
@@ -305,7 +306,7 @@ export const UK_SQUARE_BOOKINGS: UkSquareBooking[] = [
     "mrDKantha": 500000.0,
     "total": 500000.0,
     "dKantha": null,
-    "bsp": 0.0
+    "bsp": 0.0,
   },
   {
     "slNo": 19,
@@ -321,7 +322,7 @@ export const UK_SQUARE_BOOKINGS: UkSquareBooking[] = [
     "mrDKantha": 500000.0,
     "total": 500000.0,
     "dKantha": null,
-    "bsp": 0.0
+    "bsp": 0.0,
   },
   {
     "slNo": 20,
@@ -337,7 +338,7 @@ export const UK_SQUARE_BOOKINGS: UkSquareBooking[] = [
     "mrDKantha": 250000.0,
     "total": 500000.0,
     "dKantha": 250000.0,
-    "bsp": 0.0
+    "bsp": 0.0,
   },
   {
     "slNo": 21,
@@ -353,7 +354,7 @@ export const UK_SQUARE_BOOKINGS: UkSquareBooking[] = [
     "mrDKantha": 250000.0,
     "total": 500000.0,
     "dKantha": 250000.0,
-    "bsp": 0.0
+    "bsp": 0.0,
   },
   {
     "slNo": 22,
@@ -369,7 +370,7 @@ export const UK_SQUARE_BOOKINGS: UkSquareBooking[] = [
     "mrDKantha": 250000.0,
     "total": 500000.0,
     "dKantha": 250000.0,
-    "bsp": 0.0
+    "bsp": 0.0,
   },
   {
     "slNo": 23,
@@ -385,7 +386,7 @@ export const UK_SQUARE_BOOKINGS: UkSquareBooking[] = [
     "mrDKantha": 250000.0,
     "total": 500000.0,
     "dKantha": 250000.0,
-    "bsp": 0.0
+    "bsp": 0.0,
   },
   {
     "slNo": 24,
@@ -401,7 +402,7 @@ export const UK_SQUARE_BOOKINGS: UkSquareBooking[] = [
     "mrDKantha": 250000.0,
     "total": 500000.0,
     "dKantha": 250000.0,
-    "bsp": 0.0
+    "bsp": 0.0,
   },
   {
     "slNo": 25,
@@ -417,7 +418,7 @@ export const UK_SQUARE_BOOKINGS: UkSquareBooking[] = [
     "mrDKantha": null,
     "total": 500000.0,
     "dKantha": null,
-    "bsp": 500000.0
+    "bsp": 500000.0,
   },
   {
     "slNo": 26,
@@ -433,7 +434,7 @@ export const UK_SQUARE_BOOKINGS: UkSquareBooking[] = [
     "mrDKantha": 250000.0,
     "total": 500000.0,
     "dKantha": 250000.0,
-    "bsp": 0.0
+    "bsp": 0.0,
   },
   {
     "slNo": 27,
@@ -449,7 +450,7 @@ export const UK_SQUARE_BOOKINGS: UkSquareBooking[] = [
     "mrDKantha": 500000.0,
     "total": 500000.0,
     "dKantha": null,
-    "bsp": 0.0
+    "bsp": 0.0,
   },
   {
     "slNo": 28,
@@ -465,7 +466,7 @@ export const UK_SQUARE_BOOKINGS: UkSquareBooking[] = [
     "mrDKantha": 250000.0,
     "total": 500000.0,
     "dKantha": 250000.0,
-    "bsp": 0.0
+    "bsp": 0.0,
   },
   {
     "slNo": 29,
@@ -481,7 +482,7 @@ export const UK_SQUARE_BOOKINGS: UkSquareBooking[] = [
     "mrDKantha": 250000.0,
     "total": 500000.0,
     "dKantha": 250000.0,
-    "bsp": 0.0
+    "bsp": 0.0,
   },
   {
     "slNo": 30,
@@ -497,7 +498,7 @@ export const UK_SQUARE_BOOKINGS: UkSquareBooking[] = [
     "mrDKantha": null,
     "total": 500000.0,
     "dKantha": null,
-    "bsp": 500000.0
+    "bsp": 500000.0,
   },
   {
     "slNo": 31,
@@ -513,7 +514,7 @@ export const UK_SQUARE_BOOKINGS: UkSquareBooking[] = [
     "mrDKantha": 250000.0,
     "total": 500000.0,
     "dKantha": 250000.0,
-    "bsp": 0.0
+    "bsp": 0.0,
   },
   {
     "slNo": 32,
@@ -529,7 +530,7 @@ export const UK_SQUARE_BOOKINGS: UkSquareBooking[] = [
     "mrDKantha": null,
     "total": 500000.0,
     "dKantha": null,
-    "bsp": 500000.0
+    "bsp": 500000.0,
   },
   {
     "slNo": 33,
@@ -545,7 +546,7 @@ export const UK_SQUARE_BOOKINGS: UkSquareBooking[] = [
     "mrDKantha": 250000.0,
     "total": 500000.0,
     "dKantha": 250000.0,
-    "bsp": 0.0
+    "bsp": 0.0,
   },
   {
     "slNo": 34,
@@ -561,7 +562,7 @@ export const UK_SQUARE_BOOKINGS: UkSquareBooking[] = [
     "mrDKantha": null,
     "total": 500000.0,
     "dKantha": null,
-    "bsp": 500000.0
+    "bsp": 500000.0,
   },
   {
     "slNo": 35,
@@ -577,7 +578,7 @@ export const UK_SQUARE_BOOKINGS: UkSquareBooking[] = [
     "mrDKantha": 250000.0,
     "total": 500000.0,
     "dKantha": 250000.0,
-    "bsp": 0.0
+    "bsp": 0.0,
   },
   {
     "slNo": 36,
@@ -593,7 +594,7 @@ export const UK_SQUARE_BOOKINGS: UkSquareBooking[] = [
     "mrDKantha": 250000.0,
     "total": 500000.0,
     "dKantha": 250000.0,
-    "bsp": 0.0
+    "bsp": 0.0,
   },
   {
     "slNo": 37,
@@ -609,7 +610,7 @@ export const UK_SQUARE_BOOKINGS: UkSquareBooking[] = [
     "mrDKantha": 250000.0,
     "total": 500000.0,
     "dKantha": 250000.0,
-    "bsp": 0.0
+    "bsp": 0.0,
   },
   {
     "slNo": 38,
@@ -625,7 +626,7 @@ export const UK_SQUARE_BOOKINGS: UkSquareBooking[] = [
     "mrDKantha": 250000.0,
     "total": 500000.0,
     "dKantha": 250000.0,
-    "bsp": 0.0
+    "bsp": 0.0,
   },
   {
     "slNo": 39,
@@ -641,7 +642,7 @@ export const UK_SQUARE_BOOKINGS: UkSquareBooking[] = [
     "mrDKantha": 250000.0,
     "total": 500000.0,
     "dKantha": 250000.0,
-    "bsp": 0.0
+    "bsp": 0.0,
   },
   {
     "slNo": 40,
@@ -657,7 +658,7 @@ export const UK_SQUARE_BOOKINGS: UkSquareBooking[] = [
     "mrDKantha": 250000.0,
     "total": 500000.0,
     "dKantha": 250000.0,
-    "bsp": 0.0
+    "bsp": 0.0,
   },
   {
     "slNo": 41,
@@ -673,7 +674,7 @@ export const UK_SQUARE_BOOKINGS: UkSquareBooking[] = [
     "mrDKantha": 250000.0,
     "total": 500000.0,
     "dKantha": 250000.0,
-    "bsp": 0.0
+    "bsp": 0.0,
   },
   {
     "slNo": 42,
@@ -689,7 +690,7 @@ export const UK_SQUARE_BOOKINGS: UkSquareBooking[] = [
     "mrDKantha": 250000.0,
     "total": 500000.0,
     "dKantha": 250000.0,
-    "bsp": 0.0
+    "bsp": 0.0,
   },
   {
     "slNo": 43,
@@ -705,7 +706,7 @@ export const UK_SQUARE_BOOKINGS: UkSquareBooking[] = [
     "mrDKantha": 250000.0,
     "total": 500000.0,
     "dKantha": 250000.0,
-    "bsp": 0.0
+    "bsp": 0.0,
   },
   {
     "slNo": 44,
@@ -721,7 +722,7 @@ export const UK_SQUARE_BOOKINGS: UkSquareBooking[] = [
     "mrDKantha": 250000.0,
     "total": 500000.0,
     "dKantha": 250000.0,
-    "bsp": 0.0
+    "bsp": 0.0,
   },
   {
     "slNo": 45,
@@ -737,7 +738,7 @@ export const UK_SQUARE_BOOKINGS: UkSquareBooking[] = [
     "mrDKantha": 250000.0,
     "total": 500000.0,
     "dKantha": 250000.0,
-    "bsp": 0.0
+    "bsp": 0.0,
   },
   {
     "slNo": 46,
@@ -753,7 +754,7 @@ export const UK_SQUARE_BOOKINGS: UkSquareBooking[] = [
     "mrDKantha": 500000.0,
     "total": 500000.0,
     "dKantha": null,
-    "bsp": 0.0
+    "bsp": 0.0,
   },
   {
     "slNo": 47,
@@ -769,7 +770,7 @@ export const UK_SQUARE_BOOKINGS: UkSquareBooking[] = [
     "mrDKantha": 250000.0,
     "total": 500000.0,
     "dKantha": 250000.0,
-    "bsp": 0.0
+    "bsp": 0.0,
   },
   {
     "slNo": 48,
@@ -785,7 +786,7 @@ export const UK_SQUARE_BOOKINGS: UkSquareBooking[] = [
     "mrDKantha": 250000.0,
     "total": 500000.0,
     "dKantha": 250000.0,
-    "bsp": 0.0
+    "bsp": 0.0,
   },
   {
     "slNo": 49,
@@ -801,7 +802,7 @@ export const UK_SQUARE_BOOKINGS: UkSquareBooking[] = [
     "mrDKantha": null,
     "total": 500000.0,
     "dKantha": null,
-    "bsp": 500000.0
+    "bsp": 500000.0,
   },
   {
     "slNo": 50,
@@ -817,7 +818,7 @@ export const UK_SQUARE_BOOKINGS: UkSquareBooking[] = [
     "mrDKantha": null,
     "total": 1000000.0,
     "dKantha": null,
-    "bsp": 1000000.0
+    "bsp": 1000000.0,
   },
   {
     "slNo": 51,
@@ -833,7 +834,7 @@ export const UK_SQUARE_BOOKINGS: UkSquareBooking[] = [
     "mrDKantha": 250000.0,
     "total": 500000.0,
     "dKantha": 250000.0,
-    "bsp": 0.0
+    "bsp": 0.0,
   },
   {
     "slNo": 52,
@@ -849,7 +850,7 @@ export const UK_SQUARE_BOOKINGS: UkSquareBooking[] = [
     "mrDKantha": 250000.0,
     "total": 500000.0,
     "dKantha": 250000.0,
-    "bsp": 0.0
+    "bsp": 0.0,
   },
   {
     "slNo": 53,
@@ -865,7 +866,7 @@ export const UK_SQUARE_BOOKINGS: UkSquareBooking[] = [
     "mrDKantha": 250000.0,
     "total": 500000.0,
     "dKantha": 250000.0,
-    "bsp": 0.0
+    "bsp": 0.0,
   },
   {
     "slNo": 54,
@@ -881,7 +882,7 @@ export const UK_SQUARE_BOOKINGS: UkSquareBooking[] = [
     "mrDKantha": 250000.0,
     "total": 500000.0,
     "dKantha": 250000.0,
-    "bsp": 0.0
+    "bsp": 0.0,
   },
   {
     "slNo": 55,
@@ -897,7 +898,7 @@ export const UK_SQUARE_BOOKINGS: UkSquareBooking[] = [
     "mrDKantha": 250000.0,
     "total": 500000.0,
     "dKantha": 250000.0,
-    "bsp": 0.0
+    "bsp": 0.0,
   },
   {
     "slNo": 56,
@@ -913,7 +914,7 @@ export const UK_SQUARE_BOOKINGS: UkSquareBooking[] = [
     "mrDKantha": 250000.0,
     "total": 500000.0,
     "dKantha": 250000.0,
-    "bsp": 0.0
+    "bsp": 0.0,
   },
   {
     "slNo": 57,
@@ -929,7 +930,7 @@ export const UK_SQUARE_BOOKINGS: UkSquareBooking[] = [
     "mrDKantha": 250000.0,
     "total": 500000.0,
     "dKantha": 250000.0,
-    "bsp": 0.0
+    "bsp": 0.0,
   },
   {
     "slNo": 58,
@@ -945,7 +946,7 @@ export const UK_SQUARE_BOOKINGS: UkSquareBooking[] = [
     "mrDKantha": 250000.0,
     "total": 500000.0,
     "dKantha": 250000.0,
-    "bsp": 0.0
+    "bsp": 0.0,
   },
   {
     "slNo": 59,
@@ -961,7 +962,7 @@ export const UK_SQUARE_BOOKINGS: UkSquareBooking[] = [
     "mrDKantha": 250000.0,
     "total": 500000.0,
     "dKantha": 250000.0,
-    "bsp": 0.0
+    "bsp": 0.0,
   },
   {
     "slNo": 60,
@@ -977,7 +978,7 @@ export const UK_SQUARE_BOOKINGS: UkSquareBooking[] = [
     "mrDKantha": 250000.0,
     "total": 500000.0,
     "dKantha": 250000.0,
-    "bsp": 0.0
+    "bsp": 0.0,
   },
   {
     "slNo": 61,
@@ -993,7 +994,7 @@ export const UK_SQUARE_BOOKINGS: UkSquareBooking[] = [
     "mrDKantha": 250000.0,
     "total": 500000.0,
     "dKantha": 250000.0,
-    "bsp": 0.0
+    "bsp": 0.0,
   },
   {
     "slNo": 62,
@@ -1009,7 +1010,7 @@ export const UK_SQUARE_BOOKINGS: UkSquareBooking[] = [
     "mrDKantha": 250000.0,
     "total": 500000.0,
     "dKantha": 250000.0,
-    "bsp": 0.0
+    "bsp": 0.0,
   },
   {
     "slNo": 63,
@@ -1025,7 +1026,7 @@ export const UK_SQUARE_BOOKINGS: UkSquareBooking[] = [
     "mrDKantha": 250000.0,
     "total": 500000.0,
     "dKantha": 250000.0,
-    "bsp": 0.0
+    "bsp": 0.0,
   },
   {
     "slNo": 64,
@@ -1041,7 +1042,7 @@ export const UK_SQUARE_BOOKINGS: UkSquareBooking[] = [
     "mrDKantha": null,
     "total": 0.0,
     "dKantha": null,
-    "bsp": 0.0
+    "bsp": 0.0,
   },
   {
     "slNo": 65,
@@ -1057,7 +1058,7 @@ export const UK_SQUARE_BOOKINGS: UkSquareBooking[] = [
     "mrDKantha": 250000.0,
     "total": 500000.0,
     "dKantha": 250000.0,
-    "bsp": 0.0
+    "bsp": 0.0,
   },
   {
     "slNo": 66,
@@ -1073,7 +1074,7 @@ export const UK_SQUARE_BOOKINGS: UkSquareBooking[] = [
     "mrDKantha": 200000.0,
     "total": 400000.0,
     "dKantha": 300000.0,
-    "bsp": -100000.0
+    "bsp": -100000.0,
   },
   {
     "slNo": 67,
@@ -1089,7 +1090,7 @@ export const UK_SQUARE_BOOKINGS: UkSquareBooking[] = [
     "mrDKantha": 200000.0,
     "total": 400000.0,
     "dKantha": 300000.0,
-    "bsp": -100000.0
+    "bsp": -100000.0,
   },
   {
     "slNo": 68,
@@ -1105,7 +1106,7 @@ export const UK_SQUARE_BOOKINGS: UkSquareBooking[] = [
     "mrDKantha": 250000.0,
     "total": 500000.0,
     "dKantha": 250000.0,
-    "bsp": 0.0
+    "bsp": 0.0,
   },
   {
     "slNo": 69,
@@ -1121,7 +1122,7 @@ export const UK_SQUARE_BOOKINGS: UkSquareBooking[] = [
     "mrDKantha": 400000.0,
     "total": 400000.0,
     "dKantha": 100000.0,
-    "bsp": -100000.0
+    "bsp": -100000.0,
   },
   {
     "slNo": 70,
@@ -1137,7 +1138,7 @@ export const UK_SQUARE_BOOKINGS: UkSquareBooking[] = [
     "mrDKantha": null,
     "total": null,
     "dKantha": null,
-    "bsp": 0.0
+    "bsp": 0.0,
   },
   {
     "slNo": 71,
@@ -1153,7 +1154,7 @@ export const UK_SQUARE_BOOKINGS: UkSquareBooking[] = [
     "mrDKantha": 250000.0,
     "total": 500000.0,
     "dKantha": 250000.0,
-    "bsp": 0.0
+    "bsp": 0.0,
   },
   {
     "slNo": 72,
@@ -1169,7 +1170,7 @@ export const UK_SQUARE_BOOKINGS: UkSquareBooking[] = [
     "mrDKantha": 250000.0,
     "total": 500000.0,
     "dKantha": 250000.0,
-    "bsp": 0.0
+    "bsp": 0.0,
   },
   {
     "slNo": 73,
@@ -1185,7 +1186,7 @@ export const UK_SQUARE_BOOKINGS: UkSquareBooking[] = [
     "mrDKantha": 250000.0,
     "total": 500000.0,
     "dKantha": 250000.0,
-    "bsp": 0.0
+    "bsp": 0.0,
   },
   {
     "slNo": 74,
@@ -1201,7 +1202,7 @@ export const UK_SQUARE_BOOKINGS: UkSquareBooking[] = [
     "mrDKantha": 250000.0,
     "total": 500000.0,
     "dKantha": 250000.0,
-    "bsp": 0.0
+    "bsp": 0.0,
   },
   {
     "slNo": 75,
@@ -1217,7 +1218,7 @@ export const UK_SQUARE_BOOKINGS: UkSquareBooking[] = [
     "mrDKantha": 250000.0,
     "total": 500000.0,
     "dKantha": 250000.0,
-    "bsp": 0.0
+    "bsp": 0.0,
   },
   {
     "slNo": 76,
@@ -1233,7 +1234,7 @@ export const UK_SQUARE_BOOKINGS: UkSquareBooking[] = [
     "mrDKantha": 250000.0,
     "total": 500000.0,
     "dKantha": 250000.0,
-    "bsp": 0.0
+    "bsp": 0.0,
   },
   {
     "slNo": 77,
@@ -1249,7 +1250,7 @@ export const UK_SQUARE_BOOKINGS: UkSquareBooking[] = [
     "mrDKantha": 250000.0,
     "total": 500000.0,
     "dKantha": 250000.0,
-    "bsp": 0.0
+    "bsp": 0.0,
   },
   {
     "slNo": 78,
@@ -1265,7 +1266,7 @@ export const UK_SQUARE_BOOKINGS: UkSquareBooking[] = [
     "mrDKantha": 250000.0,
     "total": 500000.0,
     "dKantha": 250000.0,
-    "bsp": 0.0
+    "bsp": 0.0,
   },
   {
     "slNo": 79,
@@ -1281,7 +1282,7 @@ export const UK_SQUARE_BOOKINGS: UkSquareBooking[] = [
     "mrDKantha": 250000.0,
     "total": 500000.0,
     "dKantha": 250000.0,
-    "bsp": 0.0
+    "bsp": 0.0,
   },
   {
     "slNo": 80,
@@ -1297,7 +1298,7 @@ export const UK_SQUARE_BOOKINGS: UkSquareBooking[] = [
     "mrDKantha": 250000.0,
     "total": 500000.0,
     "dKantha": 250000.0,
-    "bsp": 0.0
+    "bsp": 0.0,
   },
   {
     "slNo": 81,
@@ -1313,7 +1314,7 @@ export const UK_SQUARE_BOOKINGS: UkSquareBooking[] = [
     "mrDKantha": 250000.0,
     "total": 500000.0,
     "dKantha": 250000.0,
-    "bsp": 0.0
+    "bsp": 0.0,
   },
   {
     "slNo": 82,
@@ -1329,7 +1330,7 @@ export const UK_SQUARE_BOOKINGS: UkSquareBooking[] = [
     "mrDKantha": 250000.0,
     "total": 500000.0,
     "dKantha": 250000.0,
-    "bsp": 0.0
+    "bsp": 0.0,
   },
   {
     "slNo": 83,
@@ -1345,7 +1346,7 @@ export const UK_SQUARE_BOOKINGS: UkSquareBooking[] = [
     "mrDKantha": 250000.0,
     "total": 500000.0,
     "dKantha": 250000.0,
-    "bsp": 0.0
+    "bsp": 0.0,
   },
   {
     "slNo": 84,
@@ -1361,7 +1362,7 @@ export const UK_SQUARE_BOOKINGS: UkSquareBooking[] = [
     "mrDKantha": 400000.0,
     "total": 650000.0,
     "dKantha": 100000.0,
-    "bsp": 150000.0
+    "bsp": 150000.0,
   },
   {
     "slNo": 85,
@@ -1377,7 +1378,7 @@ export const UK_SQUARE_BOOKINGS: UkSquareBooking[] = [
     "mrDKantha": 400000.0,
     "total": 650000.0,
     "dKantha": 100000.0,
-    "bsp": 150000.0
+    "bsp": 150000.0,
   },
   {
     "slNo": 86,
@@ -1393,7 +1394,7 @@ export const UK_SQUARE_BOOKINGS: UkSquareBooking[] = [
     "mrDKantha": 250000.0,
     "total": 500000.0,
     "dKantha": 250000.0,
-    "bsp": 0.0
+    "bsp": 0.0,
   },
   {
     "slNo": 87,
@@ -1409,7 +1410,7 @@ export const UK_SQUARE_BOOKINGS: UkSquareBooking[] = [
     "mrDKantha": 250000.0,
     "total": 500000.0,
     "dKantha": 250000.0,
-    "bsp": 0.0
+    "bsp": 0.0,
   },
   {
     "slNo": 88,
@@ -1425,7 +1426,7 @@ export const UK_SQUARE_BOOKINGS: UkSquareBooking[] = [
     "mrDKantha": 250000.0,
     "total": 500000.0,
     "dKantha": 250000.0,
-    "bsp": 0.0
+    "bsp": 0.0,
   },
   {
     "slNo": 89,
@@ -1441,7 +1442,7 @@ export const UK_SQUARE_BOOKINGS: UkSquareBooking[] = [
     "mrDKantha": 250000.0,
     "total": 500000.0,
     "dKantha": 250000.0,
-    "bsp": 0.0
+    "bsp": 0.0,
   },
   {
     "slNo": 90,
@@ -1457,7 +1458,7 @@ export const UK_SQUARE_BOOKINGS: UkSquareBooking[] = [
     "mrDKantha": 250000.0,
     "total": 500000.0,
     "dKantha": 250000.0,
-    "bsp": 0.0
+    "bsp": 0.0,
   },
   {
     "slNo": 91,
@@ -1473,7 +1474,7 @@ export const UK_SQUARE_BOOKINGS: UkSquareBooking[] = [
     "mrDKantha": 250000.0,
     "total": 500000.0,
     "dKantha": 250000.0,
-    "bsp": 0.0
+    "bsp": 0.0,
   },
   {
     "slNo": 92,
@@ -1489,7 +1490,7 @@ export const UK_SQUARE_BOOKINGS: UkSquareBooking[] = [
     "mrDKantha": 250000.0,
     "total": 500000.0,
     "dKantha": 250000.0,
-    "bsp": 0.0
+    "bsp": 0.0,
   },
   {
     "slNo": 93,
@@ -1505,7 +1506,7 @@ export const UK_SQUARE_BOOKINGS: UkSquareBooking[] = [
     "mrDKantha": 250000.0,
     "total": 500000.0,
     "dKantha": 250000.0,
-    "bsp": 0.0
+    "bsp": 0.0,
   },
   {
     "slNo": 94,
@@ -1521,7 +1522,7 @@ export const UK_SQUARE_BOOKINGS: UkSquareBooking[] = [
     "mrDKantha": 250000.0,
     "total": 500000.0,
     "dKantha": 250000.0,
-    "bsp": 0.0
+    "bsp": 0.0,
   },
   {
     "slNo": 95,
@@ -1537,7 +1538,7 @@ export const UK_SQUARE_BOOKINGS: UkSquareBooking[] = [
     "mrDKantha": 250000.0,
     "total": 500000.0,
     "dKantha": 250000.0,
-    "bsp": 0.0
+    "bsp": 0.0,
   },
   {
     "slNo": 96,
@@ -1553,7 +1554,7 @@ export const UK_SQUARE_BOOKINGS: UkSquareBooking[] = [
     "mrDKantha": 250000.0,
     "total": 500000.0,
     "dKantha": 250000.0,
-    "bsp": 0.0
+    "bsp": 0.0,
   },
   {
     "slNo": 97,
@@ -1569,7 +1570,7 @@ export const UK_SQUARE_BOOKINGS: UkSquareBooking[] = [
     "mrDKantha": 350000.0,
     "total": 500000.0,
     "dKantha": 150000.0,
-    "bsp": 0.0
+    "bsp": 0.0,
   },
   {
     "slNo": 98,
@@ -1585,7 +1586,7 @@ export const UK_SQUARE_BOOKINGS: UkSquareBooking[] = [
     "mrDKantha": 250000.0,
     "total": 500000.0,
     "dKantha": 250000.0,
-    "bsp": 0.0
+    "bsp": 0.0,
   },
   {
     "slNo": 99,
@@ -1601,7 +1602,7 @@ export const UK_SQUARE_BOOKINGS: UkSquareBooking[] = [
     "mrDKantha": 250000.0,
     "total": 500000.0,
     "dKantha": 250000.0,
-    "bsp": 0.0
+    "bsp": 0.0,
   },
   {
     "slNo": 100,
@@ -1617,7 +1618,7 @@ export const UK_SQUARE_BOOKINGS: UkSquareBooking[] = [
     "mrDKantha": 250000.0,
     "total": 500000.0,
     "dKantha": 250000.0,
-    "bsp": 0.0
+    "bsp": 0.0,
   },
   {
     "slNo": 101,
@@ -1633,7 +1634,7 @@ export const UK_SQUARE_BOOKINGS: UkSquareBooking[] = [
     "mrDKantha": 250000.0,
     "total": 500000.0,
     "dKantha": 250000.0,
-    "bsp": 0.0
+    "bsp": 0.0,
   },
   {
     "slNo": 102,
@@ -1649,7 +1650,7 @@ export const UK_SQUARE_BOOKINGS: UkSquareBooking[] = [
     "mrDKantha": 250000.0,
     "total": 500000.0,
     "dKantha": 250000.0,
-    "bsp": 0.0
+    "bsp": 0.0,
   },
   {
     "slNo": 103,
@@ -1665,7 +1666,7 @@ export const UK_SQUARE_BOOKINGS: UkSquareBooking[] = [
     "mrDKantha": 250000.0,
     "total": 500000.0,
     "dKantha": 250000.0,
-    "bsp": 0.0
+    "bsp": 0.0,
   },
   {
     "slNo": 104,
@@ -1681,7 +1682,7 @@ export const UK_SQUARE_BOOKINGS: UkSquareBooking[] = [
     "mrDKantha": 500000.0,
     "total": 1000000.0,
     "dKantha": null,
-    "bsp": 500000.0
+    "bsp": 500000.0,
   },
   {
     "slNo": 105,
@@ -1697,7 +1698,7 @@ export const UK_SQUARE_BOOKINGS: UkSquareBooking[] = [
     "mrDKantha": 500000.0,
     "total": 1000000.0,
     "dKantha": null,
-    "bsp": 500000.0
+    "bsp": 500000.0,
   },
   {
     "slNo": 106,
@@ -1713,7 +1714,7 @@ export const UK_SQUARE_BOOKINGS: UkSquareBooking[] = [
     "mrDKantha": null,
     "total": 0.0,
     "dKantha": null,
-    "bsp": 0.0
+    "bsp": 0.0,
   },
   {
     "slNo": 107,
@@ -1729,7 +1730,7 @@ export const UK_SQUARE_BOOKINGS: UkSquareBooking[] = [
     "mrDKantha": null,
     "total": null,
     "dKantha": null,
-    "bsp": 0.0
+    "bsp": 0.0,
   },
   {
     "slNo": 108,
@@ -1745,7 +1746,7 @@ export const UK_SQUARE_BOOKINGS: UkSquareBooking[] = [
     "mrDKantha": null,
     "total": null,
     "dKantha": null,
-    "bsp": 0.0
+    "bsp": 0.0,
   },
   {
     "slNo": 109,
@@ -1761,7 +1762,7 @@ export const UK_SQUARE_BOOKINGS: UkSquareBooking[] = [
     "mrDKantha": 180000.0,
     "total": 680000.0,
     "dKantha": null,
-    "bsp": 500000.0
+    "bsp": 500000.0,
   },
   {
     "slNo": 110,
@@ -1777,7 +1778,7 @@ export const UK_SQUARE_BOOKINGS: UkSquareBooking[] = [
     "mrDKantha": null,
     "total": 0.0,
     "dKantha": null,
-    "bsp": 0.0
+    "bsp": 0.0,
   },
   {
     "slNo": 111,
@@ -1793,7 +1794,7 @@ export const UK_SQUARE_BOOKINGS: UkSquareBooking[] = [
     "mrDKantha": null,
     "total": 0.0,
     "dKantha": null,
-    "bsp": 0.0
+    "bsp": 0.0,
   },
   {
     "slNo": 112,
@@ -1809,7 +1810,7 @@ export const UK_SQUARE_BOOKINGS: UkSquareBooking[] = [
     "mrDKantha": null,
     "total": 0.0,
     "dKantha": null,
-    "bsp": 0.0
+    "bsp": 0.0,
   },
   {
     "slNo": 113,
@@ -1825,7 +1826,7 @@ export const UK_SQUARE_BOOKINGS: UkSquareBooking[] = [
     "mrDKantha": null,
     "total": 0.0,
     "dKantha": null,
-    "bsp": 0.0
+    "bsp": 0.0,
   },
   {
     "slNo": 114,
@@ -1841,7 +1842,7 @@ export const UK_SQUARE_BOOKINGS: UkSquareBooking[] = [
     "mrDKantha": 250000.0,
     "total": 250000.0,
     "dKantha": 250000.0,
-    "bsp": -250000.0
+    "bsp": -250000.0,
   },
   {
     "slNo": 115,
@@ -1857,7 +1858,7 @@ export const UK_SQUARE_BOOKINGS: UkSquareBooking[] = [
     "mrDKantha": 250000.0,
     "total": 900000.0,
     "dKantha": 250000.0,
-    "bsp": 400000.0
+    "bsp": 400000.0,
   },
   {
     "slNo": 116,
@@ -1873,7 +1874,7 @@ export const UK_SQUARE_BOOKINGS: UkSquareBooking[] = [
     "mrDKantha": 250000.0,
     "total": 500000.0,
     "dKantha": 250000.0,
-    "bsp": 0.0
+    "bsp": 0.0,
   },
   {
     "slNo": 117,
@@ -1889,7 +1890,7 @@ export const UK_SQUARE_BOOKINGS: UkSquareBooking[] = [
     "mrDKantha": 500000.0,
     "total": 900000.0,
     "dKantha": null,
-    "bsp": 400000.0
+    "bsp": 400000.0,
   },
   {
     "slNo": 118,
@@ -1905,7 +1906,7 @@ export const UK_SQUARE_BOOKINGS: UkSquareBooking[] = [
     "mrDKantha": 75000.0,
     "total": 500000.0,
     "dKantha": 425000.0,
-    "bsp": 0.0
+    "bsp": 0.0,
   },
   {
     "slNo": 119,
@@ -1921,7 +1922,7 @@ export const UK_SQUARE_BOOKINGS: UkSquareBooking[] = [
     "mrDKantha": 75000.0,
     "total": 700000.0,
     "dKantha": 425000.0,
-    "bsp": 200000.0
+    "bsp": 200000.0,
   },
   {
     "slNo": 120,
@@ -1937,7 +1938,7 @@ export const UK_SQUARE_BOOKINGS: UkSquareBooking[] = [
     "mrDKantha": 74000.0,
     "total": 500000.0,
     "dKantha": 426000.0,
-    "bsp": 0.0
+    "bsp": 0.0,
   },
   {
     "slNo": 121,
@@ -1953,7 +1954,7 @@ export const UK_SQUARE_BOOKINGS: UkSquareBooking[] = [
     "mrDKantha": 250000.0,
     "total": 500000.0,
     "dKantha": 250000.0,
-    "bsp": 0.0
+    "bsp": 0.0,
   },
   {
     "slNo": 122,
@@ -1969,7 +1970,7 @@ export const UK_SQUARE_BOOKINGS: UkSquareBooking[] = [
     "mrDKantha": 250000.0,
     "total": 500000.0,
     "dKantha": 250000.0,
-    "bsp": 0.0
+    "bsp": 0.0,
   },
   {
     "slNo": 123,
@@ -1985,7 +1986,7 @@ export const UK_SQUARE_BOOKINGS: UkSquareBooking[] = [
     "mrDKantha": 75000.0,
     "total": 175000.0,
     "dKantha": 425000.0,
-    "bsp": -325000.0
+    "bsp": -325000.0,
   },
   {
     "slNo": 124,
@@ -2001,7 +2002,7 @@ export const UK_SQUARE_BOOKINGS: UkSquareBooking[] = [
     "mrDKantha": null,
     "total": 0.0,
     "dKantha": null,
-    "bsp": 0.0
+    "bsp": 0.0,
   },
   {
     "slNo": 125,
@@ -2017,7 +2018,7 @@ export const UK_SQUARE_BOOKINGS: UkSquareBooking[] = [
     "mrDKantha": null,
     "total": 0.0,
     "dKantha": null,
-    "bsp": 0.0
+    "bsp": 0.0,
   },
   {
     "slNo": 126,
@@ -2033,7 +2034,7 @@ export const UK_SQUARE_BOOKINGS: UkSquareBooking[] = [
     "mrDKantha": 75720.0,
     "total": 500000.0,
     "dKantha": 424280.0,
-    "bsp": 0.0
+    "bsp": 0.0,
   },
   {
     "slNo": 127,
@@ -2049,7 +2050,7 @@ export const UK_SQUARE_BOOKINGS: UkSquareBooking[] = [
     "mrDKantha": 500000.0,
     "total": 900000.0,
     "dKantha": null,
-    "bsp": 400000.0
+    "bsp": 400000.0,
   },
   {
     "slNo": 128,
@@ -2065,7 +2066,7 @@ export const UK_SQUARE_BOOKINGS: UkSquareBooking[] = [
     "mrDKantha": 400000.0,
     "total": 400000.0,
     "dKantha": 100000.0,
-    "bsp": -100000.0
+    "bsp": -100000.0,
   },
   {
     "slNo": 129,
@@ -2081,7 +2082,7 @@ export const UK_SQUARE_BOOKINGS: UkSquareBooking[] = [
     "mrDKantha": 500000.0,
     "total": 900000.0,
     "dKantha": null,
-    "bsp": 400000.0
+    "bsp": 400000.0,
   },
   {
     "slNo": 130,
@@ -2097,7 +2098,7 @@ export const UK_SQUARE_BOOKINGS: UkSquareBooking[] = [
     "mrDKantha": 250000.0,
     "total": 900000.0,
     "dKantha": 250000.0,
-    "bsp": 400000.0
+    "bsp": 400000.0,
   },
   {
     "slNo": 131,
@@ -2113,7 +2114,7 @@ export const UK_SQUARE_BOOKINGS: UkSquareBooking[] = [
     "mrDKantha": 250000.0,
     "total": 250000.0,
     "dKantha": null,
-    "bsp": 0.0
+    "bsp": 0.0,
   },
   {
     "slNo": 132,
@@ -2129,7 +2130,7 @@ export const UK_SQUARE_BOOKINGS: UkSquareBooking[] = [
     "mrDKantha": null,
     "total": 250000.0,
     "dKantha": null,
-    "bsp": 250000.0
+    "bsp": 250000.0,
   },
   {
     "slNo": 133,
@@ -2145,7 +2146,7 @@ export const UK_SQUARE_BOOKINGS: UkSquareBooking[] = [
     "mrDKantha": null,
     "total": 1350000.0,
     "dKantha": null,
-    "bsp": 1350000.0
+    "bsp": 1350000.0,
   },
   {
     "slNo": 134,
@@ -2161,7 +2162,7 @@ export const UK_SQUARE_BOOKINGS: UkSquareBooking[] = [
     "mrDKantha": null,
     "total": 0.0,
     "dKantha": null,
-    "bsp": 0.0
+    "bsp": 0.0,
   },
   {
     "slNo": 135,
@@ -2177,7 +2178,7 @@ export const UK_SQUARE_BOOKINGS: UkSquareBooking[] = [
     "mrDKantha": null,
     "total": 0.0,
     "dKantha": null,
-    "bsp": 0.0
+    "bsp": 0.0,
   },
   {
     "slNo": 136,
@@ -2193,7 +2194,7 @@ export const UK_SQUARE_BOOKINGS: UkSquareBooking[] = [
     "mrDKantha": null,
     "total": 0.0,
     "dKantha": null,
-    "bsp": 0.0
+    "bsp": 0.0,
   },
   {
     "slNo": 137,
@@ -2209,7 +2210,7 @@ export const UK_SQUARE_BOOKINGS: UkSquareBooking[] = [
     "mrDKantha": 250000.0,
     "total": 250000.0,
     "dKantha": null,
-    "bsp": 0.0
+    "bsp": 0.0,
   },
   {
     "slNo": 138,
@@ -2225,7 +2226,7 @@ export const UK_SQUARE_BOOKINGS: UkSquareBooking[] = [
     "mrDKantha": null,
     "total": null,
     "dKantha": null,
-    "bsp": 0.0
+    "bsp": 0.0,
   },
   {
     "slNo": 139,
@@ -2241,7 +2242,7 @@ export const UK_SQUARE_BOOKINGS: UkSquareBooking[] = [
     "mrDKantha": 500000.0,
     "total": 500000.0,
     "dKantha": null,
-    "bsp": 0.0
+    "bsp": 0.0,
   },
   {
     "slNo": 140,
@@ -2257,7 +2258,7 @@ export const UK_SQUARE_BOOKINGS: UkSquareBooking[] = [
     "mrDKantha": 500000.0,
     "total": 500000.0,
     "dKantha": null,
-    "bsp": 0.0
+    "bsp": 0.0,
   },
   {
     "slNo": 141,
@@ -2273,7 +2274,7 @@ export const UK_SQUARE_BOOKINGS: UkSquareBooking[] = [
     "mrDKantha": 500000.0,
     "total": 500000.0,
     "dKantha": null,
-    "bsp": 0.0
+    "bsp": 0.0,
   },
   {
     "slNo": 142,
@@ -2289,7 +2290,7 @@ export const UK_SQUARE_BOOKINGS: UkSquareBooking[] = [
     "mrDKantha": 500000.0,
     "total": 500000.0,
     "dKantha": null,
-    "bsp": 0.0
+    "bsp": 0.0,
   },
   {
     "slNo": 143,
@@ -2305,7 +2306,7 @@ export const UK_SQUARE_BOOKINGS: UkSquareBooking[] = [
     "mrDKantha": 250000.0,
     "total": 500000.0,
     "dKantha": 250000.0,
-    "bsp": 0.0
+    "bsp": 0.0,
   },
   {
     "slNo": 144,
@@ -2321,7 +2322,7 @@ export const UK_SQUARE_BOOKINGS: UkSquareBooking[] = [
     "mrDKantha": 250000.0,
     "total": 500000.0,
     "dKantha": 250000.0,
-    "bsp": 0.0
+    "bsp": 0.0,
   },
   {
     "slNo": 145,
@@ -2337,7 +2338,7 @@ export const UK_SQUARE_BOOKINGS: UkSquareBooking[] = [
     "mrDKantha": 500000.0,
     "total": 1000000.0,
     "dKantha": null,
-    "bsp": 500000.0
+    "bsp": 500000.0,
   },
   {
     "slNo": 146,
@@ -2353,7 +2354,7 @@ export const UK_SQUARE_BOOKINGS: UkSquareBooking[] = [
     "mrDKantha": null,
     "total": 0.0,
     "dKantha": null,
-    "bsp": 0.0
+    "bsp": 0.0,
   },
   {
     "slNo": 147,
@@ -2369,7 +2370,7 @@ export const UK_SQUARE_BOOKINGS: UkSquareBooking[] = [
     "mrDKantha": 250000.0,
     "total": 250000.0,
     "dKantha": null,
-    "bsp": 0.0
+    "bsp": 0.0,
   },
   {
     "slNo": 148,
@@ -2385,7 +2386,7 @@ export const UK_SQUARE_BOOKINGS: UkSquareBooking[] = [
     "mrDKantha": 250000.0,
     "total": 500000.0,
     "dKantha": 250000.0,
-    "bsp": 0.0
+    "bsp": 0.0,
   },
   {
     "slNo": 149,
@@ -2401,7 +2402,7 @@ export const UK_SQUARE_BOOKINGS: UkSquareBooking[] = [
     "mrDKantha": 150000.0,
     "total": 900000.0,
     "dKantha": 350000.0,
-    "bsp": 400000.0
+    "bsp": 400000.0,
   },
   {
     "slNo": 150,
@@ -2417,7 +2418,7 @@ export const UK_SQUARE_BOOKINGS: UkSquareBooking[] = [
     "mrDKantha": 250000.0,
     "total": 500000.0,
     "dKantha": 250000.0,
-    "bsp": 0.0
+    "bsp": 0.0,
   },
   {
     "slNo": 151,
@@ -2433,7 +2434,7 @@ export const UK_SQUARE_BOOKINGS: UkSquareBooking[] = [
     "mrDKantha": 500000.0,
     "total": 900000.0,
     "dKantha": null,
-    "bsp": 400000.0
+    "bsp": 400000.0,
   },
   {
     "slNo": 152,
@@ -2449,7 +2450,7 @@ export const UK_SQUARE_BOOKINGS: UkSquareBooking[] = [
     "mrDKantha": 250000.0,
     "total": 250000.0,
     "dKantha": null,
-    "bsp": 0.0
+    "bsp": 0.0,
   },
   {
     "slNo": 153,
@@ -2465,7 +2466,7 @@ export const UK_SQUARE_BOOKINGS: UkSquareBooking[] = [
     "mrDKantha": 150000.0,
     "total": 900000.0,
     "dKantha": 350000.0,
-    "bsp": 400000.0
+    "bsp": 400000.0,
   },
   {
     "slNo": 154,
@@ -2481,7 +2482,7 @@ export const UK_SQUARE_BOOKINGS: UkSquareBooking[] = [
     "mrDKantha": 400000.0,
     "total": 400000.0,
     "dKantha": null,
-    "bsp": 0.0
+    "bsp": 0.0,
   },
   {
     "slNo": 155,
@@ -2497,6 +2498,6 @@ export const UK_SQUARE_BOOKINGS: UkSquareBooking[] = [
     "mrDKantha": 400000.0,
     "total": 400000.0,
     "dKantha": null,
-    "bsp": 0.0
+    "bsp": 0.0,
   }
 ];

@@ -1,7 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { UkSquareAddModal } from "@/components/uk-square-add-modal";
+import { UkSquareDetailModal } from "@/components/uk-square-detail-modal";
 import { createClient } from "@/lib/supabase/client";
 import {
   UK_SQUARE_BOOKINGS,
@@ -9,11 +10,19 @@ import {
   UK_SQUARE_TITLE,
   type UkSquareBooking,
 } from "@/lib/uk-square-data";
+import { dobToIsoDate } from "@/lib/uk-square-payments";
 
 type Props = {
   onBack: () => void;
   /** Accounts (and Boss) may add bookings via the 3-step popup. */
   canAdd?: boolean;
+  /** Boss (super user) may delete any booking row. */
+  canDelete?: boolean;
+};
+
+type BookingRow = UkSquareBooking & {
+  /** Present when the row lives in uk_square_bookings. */
+  dbId?: string;
 };
 
 type DbRow = {
@@ -43,7 +52,7 @@ function formatInr(n: number | null | undefined) {
   }).format(n);
 }
 
-function matchesQuery(row: UkSquareBooking, q: string) {
+function matchesQuery(row: BookingRow, q: string) {
   if (!q) return true;
   const hay = [
     row.slNo,
@@ -75,8 +84,9 @@ function uniqueSorted(values: string[]): string[] {
   );
 }
 
-function dbToBooking(row: DbRow): UkSquareBooking {
+function dbToBooking(row: DbRow): BookingRow {
   return {
+    dbId: row.id,
     slNo: row.sl_no,
     dob: row.dob ?? "",
     clientName: row.client_name,
@@ -94,44 +104,198 @@ function dbToBooking(row: DbRow): UkSquareBooking {
   };
 }
 
-export function UkSquarePanel({ onBack, canAdd = false }: Props) {
+/** One visible row per site (prefer DB override / higher sl_no). */
+function dedupeBySite(rows: BookingRow[]): BookingRow[] {
+  const bySite = new Map<string, BookingRow>();
+  const noSite: BookingRow[] = [];
+  for (const row of rows) {
+    const site = row.siteNo.trim();
+    if (!site) {
+      noSite.push(row);
+      continue;
+    }
+    const key = site.toLowerCase();
+    const prev = bySite.get(key);
+    if (!prev) {
+      bySite.set(key, row);
+      continue;
+    }
+    // Prefer DB row; else keep higher sl_no
+    if (row.dbId && !prev.dbId) {
+      bySite.set(key, row);
+    } else if (Boolean(row.dbId) === Boolean(prev.dbId) && row.slNo >= prev.slNo) {
+      bySite.set(key, row);
+    }
+  }
+  return [...bySite.values(), ...noSite].sort((a, b) => a.slNo - b.slNo);
+}
+
+function bookingPayload(booking: UkSquareBooking, userId: string | null) {
+  return {
+    sl_no: booking.slNo,
+    dob: booking.dob,
+    client_name: booking.clientName,
+    site_no: booking.siteNo,
+    price: booking.price,
+    sqft: booking.sqft,
+    facing: booking.facing,
+    realtors: booking.realtors,
+    to_as_booking: booking.toAsBooking,
+    others: booking.others,
+    mr_d_kantha: booking.mrDKantha,
+    total: booking.total,
+    d_kantha: booking.dKantha,
+    bsp: booking.bsp,
+    created_by: userId,
+  };
+}
+
+export function UkSquarePanel({ onBack, canAdd = false, canDelete = false }: Props) {
   const supabase = useMemo(() => createClient(), []);
+  /** Edit + Delete menu is Boss-only (matches delete RLS). */
+  const showActions = canDelete;
   const [query, setQuery] = useState("");
   const [facingFilter, setFacingFilter] = useState("");
   const [realtorFilter, setRealtorFilter] = useState("");
   const [siteFilter, setSiteFilter] = useState("");
+  /** Clickable summary cards: only rows with an amount in that column. */
+  const [amountFilter, setAmountFilter] = useState<"kantha" | "bsp" | null>(null);
   const [filtersOpen, setFiltersOpen] = useState(false);
-  const [added, setAdded] = useState<UkSquareBooking[]>([]);
+  const [added, setAdded] = useState<BookingRow[]>([]);
+  /** Sums from dated payment lines, keyed by booking sl_no. */
+  const [paymentSums, setPaymentSums] = useState<
+    Map<number, { as: number; cash: number; kantha: number; bsp: number; has: boolean }>
+  >(new Map());
+  const [hiddenSlNos, setHiddenSlNos] = useState<Set<number>>(new Set());
   const [loadError, setLoadError] = useState<string | null>(null);
   const [showAdd, setShowAdd] = useState(false);
+  const [editing, setEditing] = useState<BookingRow | null>(null);
+  const [detail, setDetail] = useState<BookingRow | null>(null);
+  const [menuSlNo, setMenuSlNo] = useState<number | null>(null);
+  const menuRef = useRef<HTMLDivElement | null>(null);
   const [busy, setBusy] = useState(false);
+  const [deletingSlNo, setDeletingSlNo] = useState<number | null>(null);
 
-  const loadAdded = useCallback(async () => {
-    const { data, error } = await supabase
-      .from("uk_square_bookings")
-      .select(
-        "id, sl_no, dob, client_name, site_no, price, sqft, facing, realtors, to_as_booking, others, mr_d_kantha, total, d_kantha, bsp",
-      )
-      .order("sl_no", { ascending: true });
-    if (error) {
-      setLoadError(error.message);
+  const loadBookings = useCallback(async () => {
+    const [bookingsRes, hiddenRes, payRes] = await Promise.all([
+      supabase
+        .from("uk_square_bookings")
+        .select(
+          "id, sl_no, dob, client_name, site_no, price, sqft, facing, realtors, to_as_booking, others, mr_d_kantha, total, d_kantha, bsp",
+        )
+        .order("sl_no", { ascending: true }),
+      supabase.from("uk_square_hidden_sl_nos").select("sl_no"),
+      supabase
+        .from("uk_square_payment_entries")
+        .select("booking_sl_no, category, amount"),
+    ]);
+
+    if (bookingsRes.error) {
+      setLoadError(bookingsRes.error.message);
       setAdded([]);
-      return;
+    } else {
+      setLoadError(null);
+      setAdded(((bookingsRes.data ?? []) as DbRow[]).map(dbToBooking));
     }
-    setLoadError(null);
-    setAdded(((data ?? []) as DbRow[]).map(dbToBooking));
+
+    if (hiddenRes.error) {
+      // Table may not exist yet on older DBs — ignore quietly
+      setHiddenSlNos(new Set());
+    } else {
+      setHiddenSlNos(
+        new Set(((hiddenRes.data ?? []) as { sl_no: number }[]).map((r) => r.sl_no)),
+      );
+    }
+
+    if (!payRes.error && payRes.data) {
+      const map = new Map<
+        number,
+        { as: number; cash: number; kantha: number; bsp: number; has: boolean }
+      >();
+      for (const row of payRes.data as {
+        booking_sl_no: number;
+        category: string;
+        amount: number;
+      }[]) {
+        const cur = map.get(row.booking_sl_no) ?? {
+          as: 0,
+          cash: 0,
+          kantha: 0,
+          bsp: 0,
+          has: false,
+        };
+        cur.has = true;
+        const amt = Number(row.amount) || 0;
+        if (row.category === "as_booking") cur.as += amt;
+        else if (row.category === "total_cash") cur.cash += amt;
+        else if (row.category === "d_kantha") cur.kantha += amt;
+        else if (row.category === "bsp") cur.bsp += amt;
+        map.set(row.booking_sl_no, cur);
+      }
+      setPaymentSums(map);
+    } else {
+      setPaymentSums(new Map());
+    }
   }, [supabase]);
 
   useEffect(() => {
-    void loadAdded();
-  }, [loadAdded]);
+    void loadBookings();
+  }, [loadBookings]);
+
+  useEffect(() => {
+    if (menuSlNo == null) return;
+    function onDoc(e: MouseEvent) {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        setMenuSlNo(null);
+      }
+    }
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") setMenuSlNo(null);
+    }
+    document.addEventListener("mousedown", onDoc);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDoc);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [menuSlNo]);
 
   const allBookings = useMemo(() => {
-    const map = new Map<number, UkSquareBooking>();
-    for (const row of UK_SQUARE_BOOKINGS) map.set(row.slNo, row);
-    for (const row of added) map.set(row.slNo, row);
-    return [...map.values()].sort((a, b) => a.slNo - b.slNo);
-  }, [added]);
+    const map = new Map<number, BookingRow>();
+    for (const row of UK_SQUARE_BOOKINGS) {
+      if (hiddenSlNos.has(row.slNo)) continue;
+      map.set(row.slNo, row);
+    }
+    for (const row of added) {
+      if (hiddenSlNos.has(row.slNo)) continue;
+      map.set(row.slNo, row);
+    }
+    const merged = [...map.values()].map((row) => {
+      const pay = paymentSums.get(row.slNo);
+      if (!pay?.has) return row;
+      const cash = pay.cash || null;
+      const kantha = pay.kantha || null;
+      return {
+        ...row,
+        toAsBooking: pay.as || null,
+        others: cash,
+        mrDKantha: kantha,
+        dKantha: kantha,
+        bsp: pay.bsp || null,
+        total: (pay.cash || 0) + (pay.kantha || 0) || null,
+      };
+    });
+    return dedupeBySite(merged);
+  }, [added, hiddenSlNos, paymentSums]);
+
+  // Keep open site detail totals in sync after payment / booking reloads
+  useEffect(() => {
+    setDetail((prev) => {
+      if (!prev) return prev;
+      const refreshed = allBookings.find((r) => r.slNo === prev.slNo);
+      return refreshed ?? prev;
+    });
+  }, [allBookings]);
 
   const nextSlNo = useMemo(() => {
     const max = allBookings.reduce((m, r) => Math.max(m, r.slNo), 0);
@@ -158,7 +322,13 @@ export function UkSquarePanel({ onBack, canAdd = false }: Props) {
   );
 
   const q = query.trim().toLowerCase();
-  const filtersActive = Boolean(facingFilter || realtorFilter || siteFilter);
+  const filtersActive = Boolean(
+    facingFilter || realtorFilter || siteFilter || amountFilter,
+  );
+
+  function hasAmount(value: number | null | undefined): boolean {
+    return value != null && !Number.isNaN(Number(value)) && Number(value) !== 0;
+  }
 
   const rows = useMemo(() => {
     return allBookings.filter((row) => {
@@ -171,19 +341,31 @@ export function UkSquarePanel({ onBack, canAdd = false }: Props) {
         const names = splitRealtors(row.realtors).map((n) => n.toLowerCase());
         if (!names.includes(realtorFilter.toLowerCase())) return false;
       }
+      if (amountFilter === "kantha" && !hasAmount(row.mrDKantha ?? row.dKantha)) {
+        return false;
+      }
+      if (amountFilter === "bsp" && !hasAmount(row.bsp)) {
+        return false;
+      }
       return true;
     });
-  }, [allBookings, q, facingFilter, realtorFilter, siteFilter]);
+  }, [allBookings, q, facingFilter, realtorFilter, siteFilter, amountFilter]);
 
   function clearFilters() {
     setFacingFilter("");
     setRealtorFilter("");
     setSiteFilter("");
+    setAmountFilter(null);
+  }
+
+  function toggleAmountFilter(key: "kantha" | "bsp") {
+    setAmountFilter((prev) => (prev === key ? null : key));
   }
 
   const totals = useMemo(() => {
     return rows.reduce(
       (acc, row) => {
+        acc.sqft += row.sqft ?? 0;
         acc.booking += row.toAsBooking ?? 0;
         acc.others += row.others ?? 0;
         acc.kantha += row.mrDKantha ?? row.dKantha ?? 0;
@@ -191,9 +373,44 @@ export function UkSquarePanel({ onBack, canAdd = false }: Props) {
         acc.bsp += row.bsp ?? 0;
         return acc;
       },
-      { booking: 0, others: 0, kantha: 0, total: 0, bsp: 0 },
+      { sqft: 0, booking: 0, others: 0, kantha: 0, total: 0, bsp: 0 },
     );
   }, [rows]);
+
+  async function insertInitialPaymentLines(
+    booking: UkSquareBooking,
+    userId: string | null,
+  ) {
+    const iso =
+      dobToIsoDate(booking.dob) || new Date().toISOString().slice(0, 10);
+    const lines: { category: string; amount: number }[] = [];
+    if (booking.toAsBooking != null && booking.toAsBooking > 0) {
+      lines.push({ category: "as_booking", amount: booking.toAsBooking });
+    }
+    if (booking.others != null && booking.others > 0) {
+      lines.push({ category: "total_cash", amount: booking.others });
+    }
+    const kantha = booking.mrDKantha ?? booking.dKantha;
+    if (kantha != null && kantha > 0) {
+      lines.push({ category: "d_kantha", amount: kantha });
+    }
+    if (booking.bsp != null && booking.bsp > 0) {
+      lines.push({ category: "bsp", amount: booking.bsp });
+    }
+    if (lines.length === 0) return;
+    const { error } = await supabase.from("uk_square_payment_entries").insert(
+      lines.map((line) => ({
+        booking_sl_no: booking.slNo,
+        site_no: booking.siteNo,
+        category: line.category,
+        entry_sl_no: 1,
+        entry_date: iso,
+        amount: line.amount,
+        created_by: userId,
+      })),
+    );
+    if (error) throw new Error(error.message);
+  }
 
   async function handleSave(booking: UkSquareBooking) {
     setBusy(true);
@@ -201,29 +418,109 @@ export function UkSquarePanel({ onBack, canAdd = false }: Props) {
       const {
         data: { user },
       } = await supabase.auth.getUser();
-      const { error } = await supabase.from("uk_square_bookings").insert({
-        sl_no: booking.slNo,
-        dob: booking.dob,
-        client_name: booking.clientName,
-        site_no: booking.siteNo,
-        price: booking.price,
-        sqft: booking.sqft,
-        facing: booking.facing,
-        realtors: booking.realtors,
-        to_as_booking: booking.toAsBooking,
-        others: booking.others,
-        mr_d_kantha: booking.mrDKantha,
-        total: booking.total,
-        d_kantha: booking.dKantha,
-        bsp: booking.bsp,
-        created_by: user?.id ?? null,
-      });
-      if (error) throw new Error(error.message);
-      await loadAdded();
+      const payload = bookingPayload(booking, user?.id ?? null);
+
+      if (editing?.dbId) {
+        // Site already exists — only metadata (payments are dated lines on the site page)
+        const { error } = await supabase
+          .from("uk_square_bookings")
+          .update({
+            dob: payload.dob,
+            client_name: payload.client_name,
+            site_no: payload.site_no,
+            price: payload.price,
+            sqft: payload.sqft,
+            facing: payload.facing,
+            realtors: payload.realtors,
+          })
+          .eq("id", editing.dbId);
+        if (error) throw new Error(error.message);
+      } else if (editing) {
+        // Seed row edit → persist metadata override (keep seed money until payment lines exist)
+        const { error } = await supabase.from("uk_square_bookings").insert(payload);
+        if (error) throw new Error(error.message);
+      } else {
+        const { error } = await supabase.from("uk_square_bookings").insert(payload);
+        if (error) throw new Error(error.message);
+        await insertInitialPaymentLines(booking, user?.id ?? null);
+      }
+      const wasEditing = Boolean(editing);
+      await loadBookings();
       setShowAdd(false);
+      setEditing(null);
+      if (!wasEditing) {
+        // After create, open the site page for dated payment entries
+        setDetail({ ...booking });
+      }
     } finally {
       setBusy(false);
     }
+  }
+
+  async function handleDelete(row: BookingRow) {
+    if (!canDelete || busy) return;
+    const label = `Site ${row.siteNo || "—"} · ${row.clientName || "booking"}`;
+    if (!window.confirm(`Delete UK Square entry ${label}? This cannot be undone.`)) {
+      return;
+    }
+    setBusy(true);
+    setDeletingSlNo(row.slNo);
+    setMenuSlNo(null);
+    try {
+      if (row.dbId) {
+        const { error } = await supabase
+          .from("uk_square_bookings")
+          .delete()
+          .eq("id", row.dbId);
+        if (error) throw new Error(error.message);
+      } else {
+        const {
+          data: { user },
+        } = await supabase.auth.getUser();
+        const { error } = await supabase.from("uk_square_hidden_sl_nos").insert({
+          sl_no: row.slNo,
+          hidden_by: user?.id ?? null,
+        });
+        if (error) throw new Error(error.message);
+      }
+      await loadBookings();
+    } catch (e) {
+      window.alert(e instanceof Error ? e.message : "Could not delete entry.");
+    } finally {
+      setBusy(false);
+      setDeletingSlNo(null);
+    }
+  }
+
+  function openEdit(row: BookingRow) {
+    setMenuSlNo(null);
+    setDetail(null);
+    setShowAdd(false);
+    setEditing(row);
+  }
+
+  if (detail) {
+    return (
+      <>
+        <UkSquareDetailModal
+          booking={detail}
+          canAdd={canAdd}
+          canDelete={canDelete}
+          onClose={() => setDetail(null)}
+          onPaymentsChanged={() => loadBookings()}
+        />
+        {editing ? (
+          <UkSquareAddModal
+            key={`edit-${editing.slNo}`}
+            nextSlNo={nextSlNo}
+            initial={editing}
+            busy={busy}
+            onClose={() => setEditing(null)}
+            onSave={handleSave}
+          />
+        ) : null}
+      </>
+    );
   }
 
   return (
@@ -245,7 +542,7 @@ export function UkSquarePanel({ onBack, canAdd = false }: Props) {
             {UK_SQUARE_TITLE}
           </h2>
           <p className="mt-1 text-sm" style={{ color: "var(--ink-muted)" }}>
-            {UK_SQUARE_SUBTITLE}
+            {UK_SQUARE_SUBTITLE} · one entry per site — click a row for cash &amp; bank detail
           </p>
           {loadError ? (
             <p className="mt-1 text-sm" style={{ color: "var(--danger)" }}>
@@ -370,7 +667,10 @@ export function UkSquarePanel({ onBack, canAdd = false }: Props) {
           {canAdd ? (
             <button
               type="button"
-              onClick={() => setShowAdd(true)}
+              onClick={() => {
+                setEditing(null);
+                setShowAdd(true);
+              }}
               className="rounded-md px-4 py-2.5 text-sm font-semibold text-white"
               style={{ background: "var(--accent)" }}
             >
@@ -380,35 +680,55 @@ export function UkSquarePanel({ onBack, canAdd = false }: Props) {
         </div>
       </div>
 
-      <div
-        className="grid gap-3 rounded-2xl border p-4 sm:grid-cols-2 lg:grid-cols-5"
-        style={{ borderColor: "var(--line)", background: "var(--panel)" }}
-      >
-        <div>
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+        <div
+          className="rounded-2xl border p-4"
+          style={{ borderColor: "var(--line)", background: "var(--panel)" }}
+        >
           <p className="text-xs uppercase tracking-wide" style={{ color: "var(--ink-muted)" }}>
-            Bookings
+            Sites
           </p>
           <p className="mt-1 text-2xl font-semibold" style={{ fontFamily: "var(--font-display)" }}>
             {rows.length}
           </p>
         </div>
-        <div>
+        <div
+          className="rounded-2xl border p-4"
+          style={{ borderColor: "var(--line)", background: "var(--panel)" }}
+        >
           <p className="text-xs uppercase tracking-wide" style={{ color: "var(--ink-muted)" }}>
-            AS booking
+            To AS Booking
           </p>
           <p className="mt-1 text-2xl font-semibold" style={{ fontFamily: "var(--font-display)" }}>
             {formatInr(totals.booking)}
           </p>
         </div>
-        <div>
+        <button
+          type="button"
+          onClick={() => toggleAmountFilter("kantha")}
+          className="rounded-2xl border p-4 text-left transition"
+          style={{
+            borderColor: amountFilter === "kantha" ? "var(--accent)" : "var(--line)",
+            background: amountFilter === "kantha" ? "var(--accent-soft)" : "var(--panel)",
+            boxShadow: amountFilter === "kantha" ? "var(--shadow)" : undefined,
+          }}
+          aria-pressed={amountFilter === "kantha"}
+          title="Show only rows with a Mr. D Kantha (W) amount"
+        >
           <p className="text-xs uppercase tracking-wide" style={{ color: "var(--ink-muted)" }}>
-            D Kantha
+            Mr. D Kantha (W)
           </p>
           <p className="mt-1 text-2xl font-semibold" style={{ fontFamily: "var(--font-display)" }}>
             {formatInr(totals.kantha)}
           </p>
-        </div>
-        <div>
+          <p className="mt-1 text-[11px] font-medium" style={{ color: "var(--accent)" }}>
+            {amountFilter === "kantha" ? "Filter on · click to clear" : "Click to filter amounts"}
+          </p>
+        </button>
+        <div
+          className="rounded-2xl border p-4"
+          style={{ borderColor: "var(--line)", background: "var(--panel)" }}
+        >
           <p className="text-xs uppercase tracking-wide" style={{ color: "var(--ink-muted)" }}>
             Total received
           </p>
@@ -416,14 +736,28 @@ export function UkSquarePanel({ onBack, canAdd = false }: Props) {
             {formatInr(totals.total)}
           </p>
         </div>
-        <div>
+        <button
+          type="button"
+          onClick={() => toggleAmountFilter("bsp")}
+          className="rounded-2xl border p-4 text-left transition"
+          style={{
+            borderColor: amountFilter === "bsp" ? "var(--accent)" : "var(--line)",
+            background: amountFilter === "bsp" ? "var(--accent-soft)" : "var(--panel)",
+            boxShadow: amountFilter === "bsp" ? "var(--shadow)" : undefined,
+          }}
+          aria-pressed={amountFilter === "bsp"}
+          title="Show only rows with a BSP Excess Cash amount"
+        >
           <p className="text-xs uppercase tracking-wide" style={{ color: "var(--ink-muted)" }}>
-            BSP
+            BSP Excess Cash
           </p>
           <p className="mt-1 text-2xl font-semibold" style={{ fontFamily: "var(--font-display)" }}>
             {formatInr(totals.bsp)}
           </p>
-        </div>
+          <p className="mt-1 text-[11px] font-medium" style={{ color: "var(--accent)" }}>
+            {amountFilter === "bsp" ? "Filter on · click to clear" : "Click to filter amounts"}
+          </p>
+        </button>
       </div>
 
       <div
@@ -437,26 +771,38 @@ export function UkSquarePanel({ onBack, canAdd = false }: Props) {
               style={{ background: "var(--bg-deep)", color: "var(--ink-muted)" }}
             >
               <tr>
-                <th className="px-3 py-2.5 font-semibold whitespace-nowrap">Sl</th>
+                <th className="px-3 py-2.5 font-semibold whitespace-nowrap">Sl No.</th>
                 <th className="px-3 py-2.5 font-semibold whitespace-nowrap">DOB</th>
-                <th className="px-3 py-2.5 font-semibold">Client</th>
-                <th className="px-3 py-2.5 font-semibold whitespace-nowrap">Site</th>
+                <th className="px-3 py-2.5 font-semibold">Client Name</th>
+                <th className="px-3 py-2.5 font-semibold whitespace-nowrap">Site No.</th>
                 <th className="px-3 py-2.5 text-right font-semibold whitespace-nowrap">Price</th>
                 <th className="px-3 py-2.5 text-right font-semibold whitespace-nowrap">Sqft</th>
                 <th className="px-3 py-2.5 font-semibold">Facing</th>
                 <th className="px-3 py-2.5 font-semibold">Realtors</th>
-                <th className="px-3 py-2.5 text-right font-semibold whitespace-nowrap">AS booking</th>
-                <th className="px-3 py-2.5 text-right font-semibold whitespace-nowrap">Others</th>
-                <th className="px-3 py-2.5 text-right font-semibold whitespace-nowrap">D Kantha</th>
+                <th className="px-3 py-2.5 text-right font-semibold whitespace-nowrap">
+                  To AS
+                  <br />
+                  Booking
+                </th>
+                <th className="px-3 py-2.5 text-right font-semibold whitespace-nowrap">Total Cash</th>
+                <th className="px-3 py-2.5 text-right font-semibold whitespace-nowrap">
+                  Mr. D Kantha (W)
+                </th>
                 <th className="px-3 py-2.5 text-right font-semibold whitespace-nowrap">Total</th>
-                <th className="px-3 py-2.5 text-right font-semibold whitespace-nowrap">BSP</th>
+                <th className="px-3 py-2.5 text-right font-semibold whitespace-nowrap">D KANTHA Cash</th>
+                <th className="px-3 py-2.5 text-right font-semibold whitespace-nowrap">
+                  BSP Excess Cash
+                </th>
+                {showActions ? (
+                  <th className="px-3 py-2.5 font-semibold whitespace-nowrap">Actions</th>
+                ) : null}
               </tr>
             </thead>
             <tbody>
               {rows.length === 0 ? (
                 <tr>
                   <td
-                    colSpan={13}
+                    colSpan={showActions ? 15 : 14}
                     className="px-3 py-8 text-center text-sm"
                     style={{ color: "var(--ink-muted)" }}
                   >
@@ -466,14 +812,19 @@ export function UkSquarePanel({ onBack, canAdd = false }: Props) {
               ) : (
                 rows.map((row) => (
                   <tr
-                    key={`${row.slNo}-${row.siteNo}-${row.clientName}`}
-                    className="border-t"
+                    key={`site-${row.siteNo || "x"}-${row.slNo}`}
+                    className="border-t cursor-pointer transition hover:bg-[var(--accent-soft)]"
                     style={{ borderColor: "var(--line)" }}
+                    onClick={() => {
+                      setMenuSlNo(null);
+                      setDetail(row);
+                    }}
+                    title="Click to view cash & bank detail"
                   >
                     <td className="px-3 py-2.5 tabular-nums whitespace-nowrap">{row.slNo}</td>
                     <td className="px-3 py-2.5 whitespace-nowrap">{row.dob || "—"}</td>
-                    <td className="px-3 py-2.5 font-medium">{row.clientName}</td>
-                    <td className="px-3 py-2.5 whitespace-nowrap">{row.siteNo || "—"}</td>
+                    <td className="px-3 py-2.5 font-medium whitespace-pre-line">{row.clientName}</td>
+                    <td className="px-3 py-2.5 whitespace-nowrap font-semibold">{row.siteNo || "—"}</td>
                     <td className="px-3 py-2.5 text-right tabular-nums whitespace-nowrap">
                       {row.price == null ? "—" : row.price}
                     </td>
@@ -495,8 +846,85 @@ export function UkSquarePanel({ onBack, canAdd = false }: Props) {
                       {formatInr(row.total)}
                     </td>
                     <td className="px-3 py-2.5 text-right tabular-nums whitespace-nowrap">
+                      {formatInr(row.dKantha)}
+                    </td>
+                    <td className="px-3 py-2.5 text-right tabular-nums whitespace-nowrap">
                       {formatInr(row.bsp)}
                     </td>
+                    {showActions ? (
+                      <td
+                        className="relative px-3 py-2.5 whitespace-nowrap"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <div
+                          className="relative inline-block"
+                          ref={menuSlNo === row.slNo ? menuRef : undefined}
+                        >
+                          <button
+                            type="button"
+                            disabled={busy}
+                            aria-label={`Actions for site ${row.siteNo || row.slNo}`}
+                            aria-haspopup="menu"
+                            aria-expanded={menuSlNo === row.slNo}
+                            onClick={() =>
+                              setMenuSlNo((prev) => (prev === row.slNo ? null : row.slNo))
+                            }
+                            className="inline-flex h-8 w-8 items-center justify-center rounded-md border disabled:opacity-50"
+                            style={{
+                              borderColor: "var(--line)",
+                              background: "#fff",
+                              color: "var(--ink)",
+                            }}
+                          >
+                            {/* pencil / edit icon */}
+                            <svg
+                              width="16"
+                              height="16"
+                              viewBox="0 0 24 24"
+                              fill="none"
+                              stroke="currentColor"
+                              strokeWidth="2"
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              aria-hidden="true"
+                            >
+                              <path d="M12 20h9" />
+                              <path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z" />
+                            </svg>
+                          </button>
+                          {menuSlNo === row.slNo ? (
+                            <div
+                              role="menu"
+                              className="absolute right-0 z-40 mt-1 min-w-[9rem] overflow-hidden rounded-lg border shadow-[var(--shadow)]"
+                              style={{
+                                borderColor: "var(--line)",
+                                background: "var(--panel)",
+                              }}
+                            >
+                              <button
+                                type="button"
+                                role="menuitem"
+                                disabled={busy}
+                                onClick={() => openEdit(row)}
+                                className="block w-full px-3 py-2 text-left text-sm font-semibold hover:bg-[var(--accent-soft)] disabled:opacity-50"
+                              >
+                                Edit
+                              </button>
+                              <button
+                                type="button"
+                                role="menuitem"
+                                disabled={busy}
+                                onClick={() => void handleDelete(row)}
+                                className="block w-full px-3 py-2 text-left text-sm font-semibold disabled:opacity-50"
+                                style={{ color: "var(--danger)" }}
+                              >
+                                {deletingSlNo === row.slNo ? "Deleting…" : "Delete"}
+                              </button>
+                            </div>
+                          ) : null}
+                        </div>
+                      </td>
+                    ) : null}
                   </tr>
                 ))
               )}
@@ -508,11 +936,18 @@ export function UkSquarePanel({ onBack, canAdd = false }: Props) {
               >
                 <tr className="border-t-2" style={{ borderColor: "var(--line)" }}>
                   <td
-                    colSpan={8}
+                    colSpan={5}
                     className="px-3 py-2.5 text-right text-sm font-semibold whitespace-nowrap"
                   >
                     Total
                   </td>
+                  <td className="px-3 py-2.5 text-right text-sm font-semibold tabular-nums whitespace-nowrap">
+                    {new Intl.NumberFormat("en-IN", {
+                      maximumFractionDigits: 0,
+                    }).format(totals.sqft)}
+                  </td>
+                  <td className="px-3 py-2.5" />
+                  <td className="px-3 py-2.5" />
                   <td className="px-3 py-2.5 text-right text-sm font-semibold tabular-nums whitespace-nowrap">
                     {formatInr(totals.booking)}
                   </td>
@@ -528,6 +963,7 @@ export function UkSquarePanel({ onBack, canAdd = false }: Props) {
                   <td className="px-3 py-2.5 text-right text-sm font-semibold tabular-nums whitespace-nowrap">
                     {formatInr(totals.bsp)}
                   </td>
+                  {showActions ? <td className="px-3 py-2.5" /> : null}
                 </tr>
               </tfoot>
             ) : null}
@@ -535,11 +971,16 @@ export function UkSquarePanel({ onBack, canAdd = false }: Props) {
         </div>
       </div>
 
-      {showAdd && canAdd ? (
+      {(showAdd && canAdd) || editing ? (
         <UkSquareAddModal
+          key={editing ? `edit-${editing.slNo}` : "add"}
           nextSlNo={nextSlNo}
+          initial={editing}
           busy={busy}
-          onClose={() => setShowAdd(false)}
+          onClose={() => {
+            setShowAdd(false);
+            setEditing(null);
+          }}
           onSave={handleSave}
         />
       ) : null}

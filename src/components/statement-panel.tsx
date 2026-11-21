@@ -249,14 +249,12 @@ export function StatementPanel({
 
   function endFilterHold() {
     if (filterHoldDoneRef.current) return;
-    const wasHolding = filterHolding || filterHoldStartRef.current !== null;
+    // Only end a hold that actually started. Never clear search here —
+    // clearing belongs on Filters click. Pointer leave/cancel used to wipe
+    // the search box while the user was still typing.
+    if (filterHoldStartRef.current === null && !filterHolding) return;
     clearFilterHold();
-    // Short click / incomplete hold: keep existing Filters behavior (clear search)
-    if (!wasHolding) {
-      setTableSearch("");
-    } else if (filterHoldProgress < 1) {
-      // incomplete secret hold — do not clear KD so user can try again
-    }
+    // Incomplete secret hold: leave KD in the search box so they can retry.
   }
 
   useEffect(() => {
@@ -986,21 +984,45 @@ export function StatementPanel({
                 <path d="M20 20l-3.5-3.5" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" />
               </svg>
               <input
-                type="search"
+                type="text"
+                autoComplete="off"
+                autoCorrect="off"
+                autoCapitalize="off"
+                spellCheck={false}
                 value={tableSearch}
                 onChange={(e) => setTableSearch(e.target.value)}
+                onKeyDown={(e) => {
+                  // Prevent Enter from activating the nearby Filters button / clearing.
+                  if (e.key === "Enter") e.preventDefault();
+                }}
                 placeholder="Search…"
-                className="w-40 rounded-lg border py-1.5 pl-8 pr-2 text-sm sm:w-52"
+                className={`w-40 rounded-lg border py-1.5 pl-8 text-sm sm:w-52 ${
+                  tableSearch ? "pr-8" : "pr-2"
+                }`}
                 style={{ borderColor: "var(--line)", background: "#fff" }}
               />
+              {tableSearch ? (
+                <button
+                  type="button"
+                  className="absolute right-1.5 top-1/2 -translate-y-1/2 rounded px-1.5 text-xs font-semibold"
+                  style={{ color: "var(--ink-muted)" }}
+                  onClick={() => setTableSearch("")}
+                  aria-label="Clear search"
+                  title="Clear search"
+                >
+                  ✕
+                </button>
+              ) : null}
             </div>
             <button
               type="button"
               className="relative overflow-hidden rounded-lg border px-3 py-1.5 text-sm font-semibold select-none touch-none"
-              style={{ borderColor: "var(--line)", color: "var(--ink-muted)" }}
-              onClick={() => {
-                if (tableSearch.trim().toUpperCase() === "KD" && onOpenUkSquare) return;
-                setTableSearch("");
+              style={{
+                borderColor:
+                  tableSearch.trim().toUpperCase() === "KD" && onOpenUkSquare
+                    ? "var(--accent)"
+                    : "var(--line)",
+                color: "var(--ink-muted)",
               }}
               onPointerDown={startFilterHold}
               onPointerUp={endFilterHold}
@@ -1009,8 +1031,8 @@ export function StatementPanel({
               onContextMenu={(e) => e.preventDefault()}
               title={
                 tableSearch.trim().toUpperCase() === "KD" && onOpenUkSquare
-                  ? "Hold to open"
-                  : "Clear search"
+                  ? "Hold 3s to open UK Square"
+                  : "Type KD in search, then hold Filters"
               }
             >
               {filterHolding ? (

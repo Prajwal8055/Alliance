@@ -985,66 +985,64 @@ export function CashBookApp({
       </div>
 
       <div className="mx-auto flex w-full max-w-[1400px] flex-1 flex-col px-4 py-6 sm:px-6">
-        <header className="flex flex-wrap items-end justify-between gap-4">
-          <div>
-            <h1
-              className="relative inline-flex overflow-hidden rounded-lg text-[30px] font-bold tracking-tight select-none touch-none"
-              style={{ color: "var(--ink)" }}
-              onPointerDown={startTitleHold}
-              onPointerUp={endTitleHold}
-              onPointerLeave={endTitleHold}
-              onPointerCancel={endTitleHold}
-              onContextMenu={(e) => {
-                if (isAccounts) e.preventDefault();
-              }}
-              title={isAccounts && tab !== "uk-square" ? "Hold to open UK Square" : undefined}
-            >
-              {titleHolding ? (
-                <span
-                  className="absolute inset-y-0 left-0"
-                  style={{
-                    width: `${titleHoldProgress * 100}%`,
-                    background: "var(--accent-soft)",
-                  }}
-                  aria-hidden
-                />
-              ) : null}
-              <span className="relative z-10 px-0.5">
-                {tab === "uk-square"
-                  ? "UK Square"
-                  : titleHolding
+        {tab !== "uk-square" ? (
+          <header className="flex flex-wrap items-end justify-between gap-4">
+            <div>
+              <h1
+                className="relative inline-flex overflow-hidden rounded-lg text-[30px] font-bold tracking-tight select-none touch-none"
+                style={{ color: "var(--ink)" }}
+                onPointerDown={startTitleHold}
+                onPointerUp={endTitleHold}
+                onPointerLeave={endTitleHold}
+                onPointerCancel={endTitleHold}
+                onContextMenu={(e) => {
+                  if (isAccounts) e.preventDefault();
+                }}
+                title={isAccounts ? "Hold to open UK Square" : undefined}
+              >
+                {titleHolding ? (
+                  <span
+                    className="absolute inset-y-0 left-0"
+                    style={{
+                      width: `${titleHoldProgress * 100}%`,
+                      background: "var(--accent-soft)",
+                    }}
+                    aria-hidden
+                  />
+                ) : null}
+                <span className="relative z-10 px-0.5">
+                  {titleHolding
                     ? `Hold… ${Math.ceil((1 - titleHoldProgress) * 3)}s`
                     : "Cash Book"}
-              </span>
-            </h1>
-            <p className="mt-1 text-[13px]" style={{ color: "var(--ink-muted)" }}>
-              {tab === "uk-square"
-                ? "U K Square sites booking details"
-                : "Receipts and vouchers together like a bank statement."}
-            </p>
-          </div>
-          {navTabs.length > 0 ? (
-            <div
-              className="inline-flex rounded-xl border p-1"
-              style={{ borderColor: "var(--line)", background: "var(--bg-deep)" }}
-            >
-              {navTabs.map(([id, label]) => (
-                <button
-                  key={id}
-                  type="button"
-                  onClick={() => setTab(id)}
-                  className="rounded-lg px-4 py-2 text-sm font-semibold transition"
-                  style={{
-                    background: tab === id ? "var(--accent)" : "transparent",
-                    color: tab === id ? "#fff" : "var(--ink)",
-                  }}
-                >
-                  {label}
-                </button>
-              ))}
+                </span>
+              </h1>
+              <p className="mt-1 text-[13px]" style={{ color: "var(--ink-muted)" }}>
+                Receipts and vouchers together like a bank statement.
+              </p>
             </div>
-          ) : null}
-        </header>
+            {navTabs.length > 0 ? (
+              <div
+                className="inline-flex rounded-xl border p-1"
+                style={{ borderColor: "var(--line)", background: "var(--bg-deep)" }}
+              >
+                {navTabs.map(([id, label]) => (
+                  <button
+                    key={id}
+                    type="button"
+                    onClick={() => setTab(id)}
+                    className="rounded-lg px-4 py-2 text-sm font-semibold transition"
+                    style={{
+                      background: tab === id ? "var(--accent)" : "transparent",
+                      color: tab === id ? "#fff" : "var(--ink)",
+                    }}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+            ) : null}
+          </header>
+        ) : null}
 
         {message ? (
           <p className="mt-4 text-sm" style={{ color: "var(--danger)" }}>
@@ -1064,6 +1062,7 @@ export function CashBookApp({
             <UkSquarePanel
               onBack={() => setTab(isBoss ? "statement" : "receipts")}
               canAdd={isAccounts || isBoss}
+              canDelete={isBoss}
             />
           </div>
         ) : null}
