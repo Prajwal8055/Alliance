@@ -368,12 +368,13 @@ export function UkSquarePanel({ onBack, canAdd = false, canDelete = false }: Pro
         acc.sqft += row.sqft ?? 0;
         acc.booking += row.toAsBooking ?? 0;
         acc.others += row.others ?? 0;
-        acc.kantha += row.mrDKantha ?? row.dKantha ?? 0;
+        acc.kantha += row.mrDKantha ?? 0;
         acc.total += row.total ?? 0;
+        acc.dKanthaCash += row.dKantha ?? 0;
         acc.bsp += row.bsp ?? 0;
         return acc;
       },
-      { sqft: 0, booking: 0, others: 0, kantha: 0, total: 0, bsp: 0 },
+      { sqft: 0, booking: 0, others: 0, kantha: 0, total: 0, dKanthaCash: 0, bsp: 0 },
     );
   }, [rows]);
 
@@ -959,6 +960,9 @@ export function UkSquarePanel({ onBack, canAdd = false, canDelete = false }: Pro
                   </td>
                   <td className="px-3 py-2.5 text-right text-sm font-semibold tabular-nums whitespace-nowrap">
                     {formatInr(totals.total)}
+                  </td>
+                  <td className="px-3 py-2.5 text-right text-sm font-semibold tabular-nums whitespace-nowrap">
+                    {formatInr(totals.dKanthaCash)}
                   </td>
                   <td className="px-3 py-2.5 text-right text-sm font-semibold tabular-nums whitespace-nowrap">
                     {formatInr(totals.bsp)}
