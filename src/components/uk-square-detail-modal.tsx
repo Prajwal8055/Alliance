@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { UkSquarePaymentModal } from "@/components/uk-square-payment-modal";
 import { createClient } from "@/lib/supabase/client";
 import type { UkSquareBooking } from "@/lib/uk-square-data";
@@ -40,7 +40,10 @@ function formatInr(n: number | null | undefined) {
   }).format(n);
 }
 
-function seedAmount(booking: UkSquareBooking, key: UkSquarePaymentCategory): number | null {
+function seedAmount(
+  booking: Pick<UkSquareBooking, "toAsBooking" | "others" | "mrDKantha" | "dKantha" | "bsp">,
+  key: UkSquarePaymentCategory,
+): number | null {
   if (key === "as_booking") return booking.toAsBooking;
   if (key === "total_cash") return booking.others;
   if (key === "d_kantha") return booking.mrDKantha ?? booking.dKantha;
@@ -73,6 +76,21 @@ export function UkSquareDetailModal({
   const [busy, setBusy] = useState(false);
   const [activeCategory, setActiveCategory] =
     useState<UkSquarePaymentCategory | null>(null);
+  /** Avoid double-inserting seed when React Strict Mode remounts. */
+  const seedingRef = useRef<string | null>(null);
+  /** Freeze original site amounts so opening one head doesn't blank the others. */
+  const seedSnapshot = useMemo(
+    () => ({
+      toAsBooking: booking.toAsBooking,
+      others: booking.others,
+      mrDKantha: booking.mrDKantha,
+      dKantha: booking.dKantha,
+      bsp: booking.bsp,
+    }),
+    // Capture once per site open — not on every payment refresh.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [booking.slNo, booking.siteNo],
+  );
 
   const loadEntries = useCallback(async () => {
     const { data, error } = await supabase
@@ -115,7 +133,7 @@ export function UkSquareDetailModal({
 
   function displayAmount(key: UkSquarePaymentCategory): number | null {
     if (sums.counts[key] > 0) return sums.out[key] || null;
-    return seedAmount(booking, key);
+    return seedAmount(seedSnapshot, key) ?? seedAmount(booking, key);
   }
 
   const cash = displayAmount("total_cash");
@@ -138,6 +156,65 @@ export function UkSquareDetailModal({
       p_booking_sl_no: booking.slNo,
     });
   }
+
+  /** Persist booking seed as Sl 1 · DOB when no dated lines exist yet. */
+  useEffect(() => {
+    if (!activeCategory || !canAdd) return;
+    if (busy) return;
+    const key = `${booking.slNo}:${activeCategory}`;
+    if (seedingRef.current === key) return;
+    const catEntries = entries.filter((e) => e.category === activeCategory);
+    if (catEntries.length > 0) {
+      seedingRef.current = key;
+      return;
+    }
+    const seed =
+      seedAmount(seedSnapshot, activeCategory) ??
+      seedAmount(booking, activeCategory);
+    if (seed == null || seed <= 0) return;
+
+    const iso =
+      dobToIsoDate(booking.dob) || new Date().toISOString().slice(0, 10);
+    seedingRef.current = key;
+    let cancelled = false;
+
+    void (async () => {
+      setBusy(true);
+      try {
+        const {
+          data: { user },
+        } = await supabase.auth.getUser();
+        const { error } = await supabase.from("uk_square_payment_entries").insert({
+          booking_sl_no: booking.slNo,
+          site_no: booking.siteNo,
+          category: activeCategory,
+          entry_sl_no: 1,
+          entry_date: iso,
+          amount: seed,
+          created_by: user?.id ?? null,
+        });
+        if (error) throw new Error(error.message);
+        if (cancelled) return;
+        await syncBookingTotals();
+        await loadEntries();
+        await onPaymentsChanged?.();
+      } catch {
+        seedingRef.current = null;
+      } finally {
+        if (!cancelled) setBusy(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+    // Seed once per open category when that head still has no dated rows.
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional open-once seed
+  }, [activeCategory, canAdd, entries, booking.slNo]);
+
+  useEffect(() => {
+    if (!activeCategory) seedingRef.current = null;
+  }, [activeCategory]);
 
   async function handleAdd(input: { entryDate: string; amount: number }) {
     if (!activeCategory) return;
@@ -190,14 +267,6 @@ export function UkSquareDetailModal({
     }
   }
 
-  async function importSeedAsFirst() {
-    if (!activeCategory || !canAdd) return;
-    const seed = seedAmount(booking, activeCategory);
-    if (seed == null || seed <= 0 || activeEntries.length > 0) return;
-    const iso = dobToIsoDate(booking.dob) || new Date().toISOString().slice(0, 10);
-    await handleAdd({ entryDate: iso, amount: seed });
-  }
-
   return (
     <section className="space-y-5" style={{ fontFamily: "var(--font-body)" }}>
       <div>
@@ -228,6 +297,12 @@ export function UkSquareDetailModal({
           {booking.facing ? ` · ${booking.facing}` : ""}
           {booking.realtors ? ` · ${booking.realtors}` : ""}
         </p>
+        {booking.remarks?.trim() ? (
+          <p className="mt-2 text-sm whitespace-pre-wrap" style={{ color: "var(--ink)" }}>
+            <span style={{ color: "var(--ink-muted)" }}>Remarks · </span>
+            {booking.remarks.trim()}
+          </p>
+        ) : null}
         <p className="mt-2 text-sm" style={{ color: "var(--ink-muted)" }}>
           Site details stay fixed. Click an amount to add dated cash / bank entries one at a time.
         </p>
@@ -367,14 +442,16 @@ export function UkSquareDetailModal({
           booking={booking}
           category={activeCategory}
           entries={activeEntries}
-          seedAmount={seedAmount(booking, activeCategory)}
+          seedAmount={
+            seedAmount(seedSnapshot, activeCategory) ??
+            seedAmount(booking, activeCategory)
+          }
           canAdd={canAdd}
           canDelete={canDelete}
           busy={busy}
           onClose={() => setActiveCategory(null)}
           onAdd={handleAdd}
           onDelete={handleDelete}
-          onImportSeed={importSeedAsFirst}
         />
       ) : null}
     </section>

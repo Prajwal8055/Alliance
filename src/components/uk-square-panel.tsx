@@ -41,6 +41,19 @@ type DbRow = {
   total: number | null;
   d_kantha: number | null;
   bsp: number | null;
+  remarks: string | null;
+};
+
+type PaySum = {
+  as: number;
+  cash: number;
+  kantha: number;
+  bsp: number;
+  hasAs: boolean;
+  hasCash: boolean;
+  hasKantha: boolean;
+  hasBsp: boolean;
+  has: boolean;
 };
 
 function formatInr(n: number | null | undefined) {
@@ -101,6 +114,7 @@ function dbToBooking(row: DbRow): BookingRow {
     total: row.total == null ? null : Number(row.total),
     dKantha: row.d_kantha == null ? null : Number(row.d_kantha),
     bsp: row.bsp == null ? null : Number(row.bsp),
+    remarks: row.remarks ?? "",
   };
 }
 
@@ -146,6 +160,7 @@ function bookingPayload(booking: UkSquareBooking, userId: string | null) {
     total: booking.total,
     d_kantha: booking.dKantha,
     bsp: booking.bsp,
+    remarks: booking.remarks ?? "",
     created_by: userId,
   };
 }
@@ -163,9 +178,7 @@ export function UkSquarePanel({ onBack, canAdd = false, canDelete = false }: Pro
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [added, setAdded] = useState<BookingRow[]>([]);
   /** Sums from dated payment lines, keyed by booking sl_no. */
-  const [paymentSums, setPaymentSums] = useState<
-    Map<number, { as: number; cash: number; kantha: number; bsp: number; has: boolean }>
-  >(new Map());
+  const [paymentSums, setPaymentSums] = useState<Map<number, PaySum>>(new Map());
   const [hiddenSlNos, setHiddenSlNos] = useState<Set<number>>(new Set());
   const [loadError, setLoadError] = useState<string | null>(null);
   const [showAdd, setShowAdd] = useState(false);
@@ -181,7 +194,7 @@ export function UkSquarePanel({ onBack, canAdd = false, canDelete = false }: Pro
       supabase
         .from("uk_square_bookings")
         .select(
-          "id, sl_no, dob, client_name, site_no, price, sqft, facing, realtors, to_as_booking, others, mr_d_kantha, total, d_kantha, bsp",
+          "id, sl_no, dob, client_name, site_no, price, sqft, facing, realtors, to_as_booking, others, mr_d_kantha, total, d_kantha, bsp, remarks",
         )
         .order("sl_no", { ascending: true }),
       supabase.from("uk_square_hidden_sl_nos").select("sl_no"),
@@ -208,10 +221,7 @@ export function UkSquarePanel({ onBack, canAdd = false, canDelete = false }: Pro
     }
 
     if (!payRes.error && payRes.data) {
-      const map = new Map<
-        number,
-        { as: number; cash: number; kantha: number; bsp: number; has: boolean }
-      >();
+      const map = new Map<number, PaySum>();
       for (const row of payRes.data as {
         booking_sl_no: number;
         category: string;
@@ -222,14 +232,27 @@ export function UkSquarePanel({ onBack, canAdd = false, canDelete = false }: Pro
           cash: 0,
           kantha: 0,
           bsp: 0,
+          hasAs: false,
+          hasCash: false,
+          hasKantha: false,
+          hasBsp: false,
           has: false,
         };
         cur.has = true;
         const amt = Number(row.amount) || 0;
-        if (row.category === "as_booking") cur.as += amt;
-        else if (row.category === "total_cash") cur.cash += amt;
-        else if (row.category === "d_kantha") cur.kantha += amt;
-        else if (row.category === "bsp") cur.bsp += amt;
+        if (row.category === "as_booking") {
+          cur.as += amt;
+          cur.hasAs = true;
+        } else if (row.category === "total_cash") {
+          cur.cash += amt;
+          cur.hasCash = true;
+        } else if (row.category === "d_kantha") {
+          cur.kantha += amt;
+          cur.hasKantha = true;
+        } else if (row.category === "bsp") {
+          cur.bsp += amt;
+          cur.hasBsp = true;
+        }
         map.set(row.booking_sl_no, cur);
       }
       setPaymentSums(map);
@@ -273,16 +296,20 @@ export function UkSquarePanel({ onBack, canAdd = false, canDelete = false }: Pro
     const merged = [...map.values()].map((row) => {
       const pay = paymentSums.get(row.slNo);
       if (!pay?.has) return row;
-      const cash = pay.cash || null;
-      const kantha = pay.kantha || null;
+      // Only override heads that have dated payment lines — keep seed amounts for the rest.
+      const others = pay.hasCash ? pay.cash || null : row.others;
+      const kantha = pay.hasKantha ? pay.kantha || null : row.mrDKantha;
+      const dKantha = pay.hasKantha ? pay.kantha || null : row.dKantha;
+      const cashPart = others ?? 0;
+      const kanthaPart = (kantha ?? dKantha) ?? 0;
       return {
         ...row,
-        toAsBooking: pay.as || null,
-        others: cash,
+        toAsBooking: pay.hasAs ? pay.as || null : row.toAsBooking,
+        others,
         mrDKantha: kantha,
-        dKantha: kantha,
-        bsp: pay.bsp || null,
-        total: (pay.cash || 0) + (pay.kantha || 0) || null,
+        dKantha,
+        bsp: pay.hasBsp ? pay.bsp || null : row.bsp,
+        total: cashPart + kanthaPart || null,
       };
     });
     return dedupeBySite(merged);

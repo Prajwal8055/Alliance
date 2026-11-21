@@ -24,10 +24,19 @@ type Draft = {
   others: string;
   mrDKantha: string;
   bsp: string;
+  remarks: string;
 };
 
+function todayIso(): string {
+  const now = new Date();
+  const y = now.getFullYear();
+  const m = String(now.getMonth() + 1).padStart(2, "0");
+  const d = String(now.getDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
+}
+
 const emptyDraft = (): Draft => ({
-  dob: "",
+  dob: todayIso(),
   clientName: "",
   siteNo: "",
   facing: "",
@@ -38,6 +47,7 @@ const emptyDraft = (): Draft => ({
   others: "",
   mrDKantha: "",
   bsp: "",
+  remarks: "",
 });
 
 function moneyStr(n: number | null | undefined): string {
@@ -70,6 +80,7 @@ function bookingToDraft(b: UkSquareBooking): Draft {
     others: moneyStr(b.others),
     mrDKantha: moneyStr(b.mrDKantha ?? b.dKantha),
     bsp: moneyStr(b.bsp),
+    remarks: b.remarks ?? "",
   };
 }
 
@@ -185,6 +196,7 @@ export function UkSquareAddModal({ nextSlNo, initial = null, busy, onClose, onSa
       total: total || null,
       dKantha: kantha,
       bsp: parseMoney(draft.bsp),
+      remarks: draft.remarks.trim(),
     };
     try {
       await onSave(booking);
@@ -411,6 +423,17 @@ export function UkSquareAddModal({ nextSlNo, initial = null, busy, onClose, onSa
                   className={fieldClass}
                   style={fieldStyle}
                   placeholder="0"
+                />
+              </label>
+              <label className="flex flex-col gap-1 text-xs" style={{ color: "var(--ink-muted)" }}>
+                Remarks
+                <textarea
+                  value={draft.remarks}
+                  onChange={(e) => setField("remarks", e.target.value)}
+                  className={`${fieldClass} min-h-[4.5rem] resize-y`}
+                  style={fieldStyle}
+                  placeholder="Optional notes"
+                  rows={3}
                 />
               </label>
             </>

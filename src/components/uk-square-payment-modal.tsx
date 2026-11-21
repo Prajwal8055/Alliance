@@ -1,9 +1,11 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { amountInWordsInr } from "@/lib/amount-in-words";
 import type { UkSquareBooking } from "@/lib/uk-square-data";
 import {
   categoryMeta,
+  dobToIsoDate,
   formatEntryDate,
   type UkSquarePaymentCategory,
   type UkSquarePaymentEntry,
@@ -13,7 +15,7 @@ type Props = {
   booking: UkSquareBooking;
   category: UkSquarePaymentCategory;
   entries: UkSquarePaymentEntry[];
-  /** Existing site total before dated lines exist (from booking/seed). */
+  /** Booking amount shown as Sl 1 · DOB until dated lines exist. */
   seedAmount?: number | null;
   canAdd: boolean;
   canDelete: boolean;
@@ -21,7 +23,6 @@ type Props = {
   onClose: () => void;
   onAdd: (input: { entryDate: string; amount: number }) => Promise<void>;
   onDelete: (entry: UkSquarePaymentEntry) => Promise<void>;
-  onImportSeed?: () => Promise<void>;
 };
 
 function formatInr(n: number | null | undefined) {
@@ -51,28 +52,47 @@ export function UkSquarePaymentModal({
   onClose,
   onAdd,
   onDelete,
-  onImportSeed,
 }: Props) {
   const meta = categoryMeta(category);
-  const [entryDate, setEntryDate] = useState("");
+  const [entryDate, setEntryDate] = useState(() => {
+    const now = new Date();
+    const y = now.getFullYear();
+    const m = String(now.getMonth() + 1).padStart(2, "0");
+    const d = String(now.getDate()).padStart(2, "0");
+    return `${y}-${m}-${d}`;
+  });
   const [amount, setAmount] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
-  const showImport =
-    canAdd &&
-    entries.length === 0 &&
-    seedAmount != null &&
-    seedAmount > 0 &&
-    Boolean(onImportSeed);
 
-  const total = useMemo(
-    () => entries.reduce((s, e) => s + e.amount, 0),
-    [entries],
-  );
+  const seedRow = useMemo(() => {
+    if (entries.length > 0) return null;
+    if (seedAmount == null || seedAmount <= 0) return null;
+    const iso =
+      dobToIsoDate(booking.dob) || new Date().toISOString().slice(0, 10);
+    return { entrySlNo: 1, entryDate: iso, amount: seedAmount };
+  }, [entries.length, seedAmount, booking.dob]);
+
+  const total = useMemo(() => {
+    if (entries.length > 0) {
+      return entries.reduce((s, e) => s + e.amount, 0);
+    }
+    return seedRow?.amount ?? 0;
+  }, [entries, seedRow]);
   const nextSl = useMemo(
-    () => entries.reduce((m, e) => Math.max(m, e.entrySlNo), 0) + 1,
-    [entries],
+    () =>
+      entries.length > 0
+        ? entries.reduce((m, e) => Math.max(m, e.entrySlNo), 0) + 1
+        : seedRow
+          ? 2
+          : 1,
+    [entries, seedRow],
   );
+  const amountWords = useMemo(() => {
+    const n = parseMoney(amount);
+    if (n == null || n <= 0) return null;
+    return amountInWordsInr(n);
+  }, [amount]);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -91,7 +111,11 @@ export function UkSquarePaymentModal({
     try {
       await onAdd({ entryDate, amount: n });
       setAmount("");
-      setEntryDate("");
+      const now = new Date();
+      const y = now.getFullYear();
+      const m = String(now.getMonth() + 1).padStart(2, "0");
+      const d = String(now.getDate()).padStart(2, "0");
+      setEntryDate(`${y}-${m}-${d}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not add entry.");
     } finally {
@@ -129,33 +153,6 @@ export function UkSquarePaymentModal({
           {meta.note}. Add one dated amount at a time.
         </p>
 
-        {showImport ? (
-          <div
-            className="mt-4 rounded-xl border px-3 py-3 text-sm"
-            style={{
-              borderColor: "var(--line)",
-              background: "var(--accent-soft)",
-              fontFamily: "var(--font-body)",
-            }}
-          >
-            <p>
-              Site total on file:{" "}
-              <span className="font-semibold tabular-nums">{formatInr(seedAmount)}</span>
-              . Import as Sl 1 (booking DOB), then add later dates — e.g. another payment on
-              30.10.2026.
-            </p>
-            <button
-              type="button"
-              disabled={busy || saving}
-              onClick={() => void onImportSeed?.()}
-              className="mt-2 rounded-md px-3 py-1.5 text-sm font-semibold text-white disabled:opacity-60"
-              style={{ background: "var(--accent)" }}
-            >
-              Import as Sl 1
-            </button>
-          </div>
-        ) : null}
-
         <div
           className="mt-4 overflow-hidden rounded-xl border"
           style={{ borderColor: "var(--line)" }}
@@ -170,7 +167,7 @@ export function UkSquarePaymentModal({
               </tr>
             </thead>
             <tbody>
-              {entries.length === 0 ? (
+              {entries.length === 0 && !seedRow ? (
                 <tr className="border-t" style={{ borderColor: "var(--line)" }}>
                   <td
                     colSpan={canDelete ? 4 : 3}
@@ -180,32 +177,43 @@ export function UkSquarePaymentModal({
                     No entries yet. Add the first payment below.
                   </td>
                 </tr>
-              ) : (
-                entries.map((row) => (
-                  <tr key={row.id} className="border-t" style={{ borderColor: "var(--line)" }}>
-                    <td className="px-3 py-2.5 tabular-nums">{row.entrySlNo}</td>
-                    <td className="px-3 py-2.5 whitespace-nowrap">
-                      {formatEntryDate(row.entryDate)}
+              ) : null}
+              {seedRow ? (
+                <tr className="border-t" style={{ borderColor: "var(--line)" }}>
+                  <td className="px-3 py-2.5 tabular-nums">{seedRow.entrySlNo}</td>
+                  <td className="px-3 py-2.5 whitespace-nowrap">
+                    {formatEntryDate(seedRow.entryDate)}
+                  </td>
+                  <td className="px-3 py-2.5 text-right font-semibold tabular-nums whitespace-nowrap">
+                    {formatInr(seedRow.amount)}
+                  </td>
+                  {canDelete ? <td className="px-3 py-2.5" /> : null}
+                </tr>
+              ) : null}
+              {entries.map((row) => (
+                <tr key={row.id} className="border-t" style={{ borderColor: "var(--line)" }}>
+                  <td className="px-3 py-2.5 tabular-nums">{row.entrySlNo}</td>
+                  <td className="px-3 py-2.5 whitespace-nowrap">
+                    {formatEntryDate(row.entryDate)}
+                  </td>
+                  <td className="px-3 py-2.5 text-right font-semibold tabular-nums whitespace-nowrap">
+                    {formatInr(row.amount)}
+                  </td>
+                  {canDelete ? (
+                    <td className="px-3 py-2.5 text-right">
+                      <button
+                        type="button"
+                        disabled={busy || saving}
+                        onClick={() => void onDelete(row)}
+                        className="text-xs font-semibold disabled:opacity-50"
+                        style={{ color: "var(--danger)" }}
+                      >
+                        Delete
+                      </button>
                     </td>
-                    <td className="px-3 py-2.5 text-right font-semibold tabular-nums whitespace-nowrap">
-                      {formatInr(row.amount)}
-                    </td>
-                    {canDelete ? (
-                      <td className="px-3 py-2.5 text-right">
-                        <button
-                          type="button"
-                          disabled={busy || saving}
-                          onClick={() => void onDelete(row)}
-                          className="text-xs font-semibold disabled:opacity-50"
-                          style={{ color: "var(--danger)" }}
-                        >
-                          Delete
-                        </button>
-                      </td>
-                    ) : null}
-                  </tr>
-                ))
-              )}
+                  ) : null}
+                </tr>
+              ))}
               <tr
                 className="border-t-2"
                 style={{ borderColor: "var(--line)", background: "var(--bg-deep)" }}
@@ -255,6 +263,11 @@ export function UkSquarePaymentModal({
                   className="rounded-md border px-3 py-2 text-sm"
                   style={{ borderColor: "var(--line)", background: "#fff", color: "var(--ink)" }}
                 />
+                {amountWords ? (
+                  <span className="text-[11px] leading-snug" style={{ color: "var(--ink-muted)" }}>
+                    {amountWords}
+                  </span>
+                ) : null}
               </label>
             </div>
             {error ? (

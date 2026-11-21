@@ -13,6 +13,7 @@ export type UkSquareBooking = {
   total: number | null;
   dKantha: number | null;
   bsp: number | null;
+  remarks?: string;
 };
 
 export const UK_SQUARE_TITLE = "UK Square";
